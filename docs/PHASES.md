@@ -68,6 +68,12 @@ we left off. Next session opens on the weakest concept from last time.
 ## Phase 4 — FastAPI (Days 9–11)
 Move from CLI to REST.
 
+**Run API:** `uvicorn main:app --reload` → http://127.0.0.1:8000/docs
+
+**CLI:** `python cli.py` (unchanged behavior)
+
+**Setup:** `pip install -e ".[phase2,phase3,phase4]"`
+
 In scope:
 - `api/routes.py`:
   - `POST /sessions` — start (user_id, topic) → session_id

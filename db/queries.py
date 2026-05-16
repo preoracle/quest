@@ -153,6 +153,18 @@ def end_session(conn: sqlite3.Connection, session_id: str) -> None:
     conn.commit()
 
 
+def get_session(conn: sqlite3.Connection, session_id: str) -> dict | None:
+    """Return a session row as a dict, or None if missing."""
+    row = conn.execute(
+        """
+        SELECT id, user_id, topic, started_at, ended_at, summary_text
+        FROM sessions WHERE id = ?
+        """,
+        (session_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def record_turn(
     conn: sqlite3.Connection,
     session_id: str,

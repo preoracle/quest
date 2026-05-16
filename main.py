@@ -1,103 +1,40 @@
-"""Quest CLI entry point.
-
-Usage:
-    python main.py                      # interactive topic picker
-    python main.py <topic_id>           # e.g. closures_in_javascript
-    python main.py mastery              # show mastery table for default user
-    python main.py mastery <topic_id>   # mastery for one topic
-
-`:q` pauses (resume later). Session ends when all concepts are mastered.
-"""
+"""Quest FastAPI application (Phase 4 entry point)."""
 
 from __future__ import annotations
 
-import sys
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
+from fastapi import FastAPI
 
-from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
-from core.topics import list_topics, load_topic
+from api.routes import router
 from db import queries
 
-# Re-export for tests / scripts that imported from main
-__all__ = ["EXIT_COMMANDS", "list_topics", "load_topic"]
 
-
-def pick_topic_interactive() -> str:
-    """Show numbered topic list, read user choice, return topic id."""
-    topics = list_topics()
-    if not topics:
-        print("No concept YAMLs found in concepts/. Add one and retry.")
-        raise SystemExit(1)
-
-    print("\nPick a topic:")
-    for idx, (_, display) in enumerate(topics, start=1):
-        print(f"  {idx}. {display}")
-    print()
-
-    while True:
-        raw = input("> ").strip()
-        if not raw:
-            continue
-        if raw in EXIT_COMMANDS:
-            raise SystemExit(0)
-        if raw.isdigit():
-            i = int(raw)
-            if 1 <= i <= len(topics):
-                return topics[i - 1][0]
-        for tid, _ in topics:
-            if raw == tid:
-                return tid
-        print(f"Pick a number 1–{len(topics)} or a topic id.")
-
-
-def print_mastery_table(user_id: str = DEFAULT_USER_ID, topic: str | None = None) -> None:
-    """Print topic and concept mastery rows for a user."""
-    queries.init_db()
-    with queries.get_connection() as conn:
-        rows = queries.get_mastery_for_user(conn, user_id, topic=topic)
-
-    if not rows:
-        label = f" for topic '{topic}'" if topic else ""
-        print(f"No mastery recorded yet{label}. Run a session first.")
-        return
-
-    print(f"\nMastery — user: {user_id}")
-    if topic:
-        print(f"Topic filter: {topic}")
-    print(f"{'Kind':<8} {'Name':<32} {'Score':>6} {'/5':>6} {'N':>4}")
-    print("-" * 60)
-    for row in rows:
-        print(
-            f"{row.kind:<8} {row.name[:32]:<32} "
-            f"{row.score:>6.2f} {row.score_1_to_5:>6.1f} {row.num_evaluations:>4}"
-        )
-    print()
-
-
-def main(argv: list[str]) -> int:
-    """CLI entry point. Returns a process exit code."""
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Initialize SQLite on startup."""
     load_dotenv()
     queries.init_db()
+    yield
 
-    if len(argv) > 1 and argv[1] == "mastery":
-        topic_filter = argv[2] if len(argv) > 2 else None
-        print_mastery_table(topic=topic_filter)
-        return 0
 
-    if len(argv) > 1:
-        topic_id = argv[1]
-    else:
-        topic_id = pick_topic_interactive()
+app = FastAPI(
+    title="Quest",
+    description="Socratic tutor API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+app.include_router(router)
 
-    try:
-        with queries.get_connection() as conn:
-            run_session(conn, DEFAULT_USER_ID, topic_id)
-    except FileNotFoundError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-    return 0
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness check."""
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
