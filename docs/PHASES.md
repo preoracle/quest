@@ -87,11 +87,27 @@ Exit criterion: a session driven entirely through `curl` produces the
 same SQLite state as one driven through the CLI.
 
 ## Phase 5 — React frontend (Days 12–14)
-UI on top of the REST API. Designs from Stitch.
+UI on top of the REST API. Visual reference: `stitch_quest_socratic_ai/` (Socratic Minimalist dark theme).
 
-In scope (TBD — re-plan when Phase 4 lands):
-- Vite + React app in `frontend/`
-- Pages: topic picker, session chat, mastery dashboard
+**Layout:** single repo, `frontend/` (Vite + React + Tailwind). Not a Turborepo.
+
+**Run (two terminals):**
+
+```bash
+# API
+source .venv/bin/activate
+uvicorn main:app --reload
+
+# UI
+cd frontend && npm install && npm run dev
+```
+
+→ http://localhost:5173 (proxies `/api` → :8000)
+
+In scope:
+- `frontend/` — catalog, active session chat, mastery ledger
+- CORS for localhost:5173 in `main.py`
+- `GET /topics` for the catalog
 
 Exit criterion: full session experience end-to-end through the browser,
 including resuming a partial session.

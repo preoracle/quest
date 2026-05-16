@@ -10,3 +10,6 @@ dist/
 .DS_Store
 quest.db
 quest_checkpoints.db
+frontend/node_modules/
+frontend/dist/
+stitch_quest_socratic_ai

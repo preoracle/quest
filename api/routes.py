@@ -11,9 +11,16 @@ from api.schemas import (
     SubmitTurnRequest,
 )
 from core.session_api import SessionView, get_session_view, start_session, submit_turn
+from core.topics import list_topics
 from db import queries
 
 router = APIRouter()
+
+
+@router.get("/topics")
+def list_available_topics() -> list[dict[str, str]]:
+    """Return topic id + display name for the catalog UI."""
+    return [{"id": tid, "display_name": name} for tid, name in list_topics()]
 
 
 @router.post("/sessions", response_model=SessionView)
