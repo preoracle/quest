@@ -9,3 +9,4 @@ build/
 dist/
 .DS_Store
 quest.db
+quest_checkpoints.db

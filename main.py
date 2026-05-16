@@ -6,7 +6,7 @@ Usage:
     python main.py mastery              # show mastery table for default user
     python main.py mastery <topic_id>   # mastery for one topic
 
-Type `:quit`, `:q`, or Ctrl-C during a session to exit.
+`:q` pauses (resume later). Session ends when all concepts are mastered.
 """
 
 from __future__ import annotations

@@ -13,6 +13,7 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 _DEFAULT_DB_PATH = _REPO_ROOT / "quest.db"
+_CHECKPOINT_DB_PATH = _REPO_ROOT / "quest_checkpoints.db"
 
 
 def _utc_now() -> str:
@@ -192,6 +193,112 @@ def record_turn(
     return int(cursor.lastrowid)
 
 
+def get_checkpoint_db_path() -> Path:
+    """Return the LangGraph SQLite checkpointer database path."""
+    return _CHECKPOINT_DB_PATH
+
+
+def get_open_session(
+    conn: sqlite3.Connection,
+    user_id: str,
+    topic: str,
+) -> str | None:
+    """Return the id of an in-progress session (ended_at IS NULL), if any."""
+    row = conn.execute(
+        """
+        SELECT id FROM sessions
+        WHERE user_id = ? AND topic = ? AND ended_at IS NULL
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (user_id, topic),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def get_topic_concepts(conn: sqlite3.Connection, topic_id: str) -> list[dict]:
+    """Return concept rows (kind=concept) for a topic as dicts."""
+    rows = conn.execute(
+        """
+        SELECT id, topic, kind, name, description, prerequisites_json
+        FROM concepts
+        WHERE topic = ? AND kind = 'concept'
+        ORDER BY name
+        """,
+        (topic_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_mastery_maps(
+    conn: sqlite3.Connection,
+    user_id: str,
+    topic_id: str,
+) -> tuple[dict[str, float], dict[str, str | None]]:
+    """Return (concept_id -> normalized score, concept_id -> next_review_at)."""
+    rows = conn.execute(
+        """
+        SELECT m.concept_id, m.score, m.next_review_at
+        FROM mastery m
+        JOIN concepts c ON c.id = m.concept_id
+        WHERE m.user_id = ? AND c.topic = ? AND c.kind = 'concept'
+        """,
+        (user_id, topic_id),
+    ).fetchall()
+    scores = {r["concept_id"]: float(r["score"]) for r in rows}
+    reviews = {r["concept_id"]: r["next_review_at"] for r in rows}
+    return scores, reviews
+
+
+def get_turns_for_session(
+    conn: sqlite3.Connection,
+    session_id: str,
+) -> list[dict]:
+    """Return turn rows ordered by turn_idx."""
+    rows = conn.execute(
+        """
+        SELECT role, content, turn_idx
+        FROM turns
+        WHERE session_id = ?
+        ORDER BY turn_idx
+        """,
+        (session_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_session_summary(
+    conn: sqlite3.Connection,
+    session_id: str,
+    summary_text: str,
+) -> None:
+    """Write the session summary blob."""
+    conn.execute(
+        "UPDATE sessions SET summary_text = ? WHERE id = ?",
+        (summary_text, session_id),
+    )
+    conn.commit()
+
+
+def get_recent_summaries(
+    conn: sqlite3.Connection,
+    user_id: str,
+    topic: str,
+    limit: int = 3,
+) -> list[str]:
+    """Return the most recent non-null session summaries for a user/topic."""
+    rows = conn.execute(
+        """
+        SELECT summary_text FROM sessions
+        WHERE user_id = ? AND topic = ? AND summary_text IS NOT NULL
+        ORDER BY ended_at DESC
+        LIMIT ?
+        """,
+        (user_id, topic, limit),
+    ).fetchall()
+    return [r["summary_text"] for r in rows]
+
+
 def upsert_mastery(
     conn: sqlite3.Connection,
     user_id: str,
@@ -232,6 +339,31 @@ def upsert_mastery(
             (new_score, n + 1, _utc_now(), user_id, concept_id),
         )
     conn.commit()
+
+
+def get_mastery_sm2_state(
+    conn: sqlite3.Connection,
+    user_id: str,
+    concept_id: str,
+) -> tuple[float, int, float, int, int] | None:
+    """Return (score, num_evaluations, ease_factor, interval_days, repetitions) or None."""
+    row = conn.execute(
+        """
+        SELECT score, num_evaluations, ease_factor, interval_days, repetitions
+        FROM mastery
+        WHERE user_id = ? AND concept_id = ?
+        """,
+        (user_id, concept_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return (
+        float(row["score"]),
+        int(row["num_evaluations"]),
+        float(row["ease_factor"]),
+        int(row["interval_days"]),
+        int(row["repetitions"]),
+    )
 
 
 @dataclass

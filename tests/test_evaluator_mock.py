@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from core.models import (
     CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD,
     EvaluatorOutput,
 )
-from core.session import _apply_mastery_updates
+from core.mastery import apply_evaluation_to_mastery
 from db import queries
 
 
@@ -42,7 +40,7 @@ def test_apply_mastery_skips_low_confidence_concept(tmp_db):
     inferred_concept_id="t1:closure",
     inferred_concept_confidence=0.4,
   )
-  _apply_mastery_updates(tmp_db, "u1", "t1", evaluation)
+  apply_evaluation_to_mastery(tmp_db, "u1", "t1", evaluation)
   count = tmp_db.execute(
     "SELECT COUNT(*) FROM mastery WHERE user_id = ?", ("u1",)
   ).fetchone()[0]
@@ -60,32 +58,19 @@ def test_apply_mastery_updates_both_when_confident(tmp_db, closures_topic_data):
     inferred_concept_id="closures_in_javascript:closure",
     inferred_concept_confidence=CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD,
   )
-  _apply_mastery_updates(tmp_db, "u1", "closures_in_javascript", evaluation)
+  apply_evaluation_to_mastery(tmp_db, "u1", "closures_in_javascript", evaluation)
   count = tmp_db.execute(
     "SELECT COUNT(*) FROM mastery WHERE user_id = ?", ("u1",)
   ).fetchone()[0]
   assert count == 2
 
 
-@patch("core.session.build_evaluator_chain")
-@patch("core.session.build_socratic_chain")
 def test_session_persists_evaluator_fields(
-  mock_socratic_factory,
-  mock_eval_factory,
   tmp_db,
   closures_topic_data,
   mock_evaluator_output,
 ):
   """One user turn should write evaluator columns on the user turn row."""
-  from langchain_core.messages import AIMessage
-
-  mock_socratic = mock_socratic_factory.return_value
-  mock_socratic.invoke.side_effect = [
-    AIMessage(content="Opening question?"),
-    AIMessage(content="Follow-up?"),
-  ]
-  mock_eval_factory.return_value.invoke.return_value = mock_evaluator_output
-
   queries.get_or_create_user(tmp_db, "u1")
   queries.upsert_topic_concepts(tmp_db, closures_topic_data)
   session_id = queries.create_session(tmp_db, "u1", "closures_in_javascript")
@@ -104,7 +89,7 @@ def test_session_persists_evaluator_fields(
     evaluator_concept_id=mock_evaluator_output.inferred_concept_id,
     evaluator_concept_confidence=mock_evaluator_output.inferred_concept_confidence,
   )
-  _apply_mastery_updates(
+  apply_evaluation_to_mastery(
     tmp_db, "u1", "closures_in_javascript", mock_evaluator_output
   )
 

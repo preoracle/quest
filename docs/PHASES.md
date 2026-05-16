@@ -49,6 +49,10 @@ the evaluator fixtures all pass.
 ## Phase 3 — LangGraph + Memory + SM-2 (Days 6–8)
 Wire the full session as a state graph; add spaced repetition.
 
+**Setup:** `pip install -e ".[phase2,phase3]"` (see `./scripts/setup.sh`).
+
+**CLI:** `:q` pauses (open session + checkpoint). Session ends when every concept in the DAG is mastered (score ≥ 4 for 3 turns each).
+
 In scope:
 - `core/sm2.py` — pure SM-2 implementation with unit tests
 - `core/memory.py` — end-of-session summary written to `sessions.summary_text`

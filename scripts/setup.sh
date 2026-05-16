@@ -30,7 +30,7 @@ if [ ! -d .venv ]; then
 fi
 
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -e ".[phase2]"
+.venv/bin/pip install -e ".[phase2,phase3]"
 
 echo ""
 echo "Done. Use the venv for every command:"
