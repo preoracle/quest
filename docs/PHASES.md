@@ -21,7 +21,16 @@ never explains or asserts a fact. If it slips even once, iterate on
 ## Phase 2 — Evaluator + SQLite (Days 3–5)
 Score every user response, persist mastery.
 
-**Setup:** `pip install -e ".[phase2]"` then copy `.env.example` → `.env`.
+**Setup (requires Python 3.11+, not macOS system 3.9):**
+
+```bash
+./scripts/setup.sh          # creates .venv and installs deps
+source .venv/bin/activate
+cp .env.example .env        # add ANTHROPIC_API_KEY
+```
+
+Do **not** use bare `pip` / `pytest` / `python` — they may hit Python 3.9.6.
+Always use `.venv/bin/python`, or activate the venv first.
 
 **Tests:** `pytest` (mocked, default) · `pytest -m live` (3 real Haiku calls).
 
