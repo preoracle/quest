@@ -1,0 +1,33 @@
+topic: closures_in_javascript
+display_name: Closures in JavaScript
+
+concepts:
+  - id: variable_scope
+    name: Variable scope
+    description: Block vs function scope; var, let, and const lifetimes.
+    prerequisites: []
+
+  - id: first_class_functions
+    name: First-class functions
+    description: Functions as values that can be passed, returned, and stored.
+    prerequisites: []
+
+  - id: lexical_environment
+    name: Lexical environment
+    description: The scope chain a function captures at definition time, not call time.
+    prerequisites: [variable_scope]
+
+  - id: reference_vs_value
+    name: Reference vs value semantics
+    description: Whether a captured variable is a snapshot or a live reference.
+    prerequisites: [variable_scope]
+
+  - id: closure
+    name: Closure
+    description: An inner function plus its lexical environment, retained after the outer function returns.
+    prerequisites: [lexical_environment, first_class_functions, reference_vs_value]
+
+  - id: closure_use_cases
+    name: Closure use cases
+    description: Practical applications - data privacy, partial application, callbacks, module pattern.
+    prerequisites: [closure]
