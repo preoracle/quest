@@ -1,14 +1,14 @@
 """LangChain runnables for Quest.
 
-Phase 1: only the Socratic tutor chain. The Evaluator chain (Phase 2)
-and graph-aware chains (Phase 3) land in later commits.
+Socratic tutor (Sonnet) and understanding evaluator (Haiku) chains.
+Graph-aware chains land in Phase 3.
 
-The Socratic prompt itself is the product — keep it in `prompts/socratic.txt`,
-never hardcoded here (per BRIEF).
+Prompts live in `prompts/*.txt` — never hardcoded here (per BRIEF).
 """
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -16,10 +16,13 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 
+from core.models import EvaluatorOutput
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PROMPTS_DIR = _REPO_ROOT / "prompts"
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_EVAL_MODEL = "claude-haiku-4-5"
 
 
 def _load_prompt(name: str) -> str:
@@ -68,3 +71,35 @@ def build_socratic_chain(topic: str) -> Runnable:
     )
 
     return prompt | model
+
+
+def build_evaluator_chain() -> Runnable:
+    """Build the understanding evaluator chain (Haiku, structured output).
+
+    Expects input dict with keys: topic, concept_list (list of dicts with
+    id/name/description), tutor_question, student_answer.
+
+    Returns an EvaluatorOutput via Anthropic tool use. The Socratic tutor
+    never sees this output (per BRIEF).
+    """
+    system_template = _load_prompt("evaluator")
+
+    # Anthropic requires at least one non-system message.
+    prompt = ChatPromptTemplate.from_messages([("human", system_template)])
+
+    model = ChatAnthropic(
+        model=os.environ.get("ANTHROPIC_EVAL_MODEL", DEFAULT_EVAL_MODEL),
+        temperature=0,
+        max_tokens=512,
+    ).with_structured_output(EvaluatorOutput)
+
+    def _prepare(inputs: dict) -> dict:
+        concepts = inputs["concept_list"]
+        return {
+            "topic": inputs["topic"],
+            "concept_list_json": json.dumps(concepts, indent=2),
+            "tutor_question": inputs["tutor_question"],
+            "student_answer": inputs["student_answer"],
+        }
+
+    return _prepare | prompt | model

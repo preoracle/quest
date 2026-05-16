@@ -22,4 +22,10 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["core"]
+packages = ["core", "db"]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: hits the real Anthropic API (run with pytest -m live)",
+]
+addopts = "-m 'not live'"

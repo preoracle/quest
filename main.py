@@ -1,72 +1,30 @@
 """Quest CLI entry point.
 
-Phase 1: a REPL where the user picks a topic from `concepts/*.yaml` and
-holds a Socratic conversation with Claude Sonnet. Turn history lives in
-memory only — persistence lands in Phase 2.
-
 Usage:
-    python main.py                  # interactive topic picker
-    python main.py <topic_id>       # skip picker, e.g. closures_in_javascript
+    python main.py                      # interactive topic picker
+    python main.py <topic_id>           # e.g. closures_in_javascript
+    python main.py mastery              # show mastery table for default user
+    python main.py mastery <topic_id>   # mastery for one topic
 
-Type `:quit` or `:q`, or send EOF / Ctrl-C, to exit gracefully.
+Type `:quit`, `:q`, or Ctrl-C during a session to exit.
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from core.chains import build_socratic_chain
+from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
+from core.topics import list_topics, load_topic
+from db import queries
 
-_REPO_ROOT = Path(__file__).resolve().parent
-_CONCEPTS_DIR = _REPO_ROOT / "concepts"
-
-EXIT_COMMANDS = {":quit", ":q", ":exit"}
-
-
-def list_topics() -> list[tuple[str, str]]:
-    """Return [(topic_id, display_name), ...] for every concept YAML on disk.
-
-    Returns an empty list if `concepts/` is missing or contains no .yaml files.
-    """
-    if not _CONCEPTS_DIR.exists():
-        return []
-    out: list[tuple[str, str]] = []
-    for path in sorted(_CONCEPTS_DIR.glob("*.yaml")):
-        with path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        topic_id = data.get("topic") or path.stem
-        display = data.get("display_name") or topic_id.replace("_", " ").title()
-        out.append((topic_id, display))
-    return out
-
-
-def load_topic(topic_id: str) -> dict:
-    """Load a single concept YAML by topic id (filename stem).
-
-    Returns the parsed dict. Raises FileNotFoundError with a helpful
-    message listing available topics if the file is missing.
-    """
-    path = _CONCEPTS_DIR / f"{topic_id}.yaml"
-    if not path.exists():
-        available = [tid for tid, _ in list_topics()]
-        raise FileNotFoundError(
-            f"No concept map for '{topic_id}'. "
-            f"Available: {available or '(none — add a YAML to concepts/)'}"
-        )
-    with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+# Re-export for tests / scripts that imported from main
+__all__ = ["EXIT_COMMANDS", "list_topics", "load_topic"]
 
 
 def pick_topic_interactive() -> str:
-    """Show numbered topic list, read user choice, return topic id.
-
-    Raises SystemExit if there are no topics or the user cancels.
-    """
+    """Show numbered topic list, read user choice, return topic id."""
     topics = list_topics()
     if not topics:
         print("No concept YAMLs found in concepts/. Add one and retry.")
@@ -93,55 +51,39 @@ def pick_topic_interactive() -> str:
         print(f"Pick a number 1–{len(topics)} or a topic id.")
 
 
-def run_session(topic_id: str) -> None:
-    """Run the Socratic REPL on `topic_id` until the user exits.
+def print_mastery_table(user_id: str = DEFAULT_USER_ID, topic: str | None = None) -> None:
+    """Print topic and concept mastery rows for a user."""
+    queries.init_db()
+    with queries.get_connection() as conn:
+        rows = queries.get_mastery_for_user(conn, user_id, topic=topic)
 
-    Builds the chain once, keeps history in a local list, and invokes
-    the chain after each user turn. No persistence in Phase 1.
-    """
-    topic_data = load_topic(topic_id)
-    display = topic_data.get("display_name") or topic_id
+    if not rows:
+        label = f" for topic '{topic}'" if topic else ""
+        print(f"No mastery recorded yet{label}. Run a session first.")
+        return
 
-    print(f"\nQuest — topic: {display}")
-    print("Type your responses. Send `:q` to exit.\n")
-
-    chain = build_socratic_chain(topic=topic_id)
-    history: list[BaseMessage] = []
-
-    print("(opening question...)")
-    history.append(HumanMessage(content="Begin. Ask me an opening question."))
-    opening = chain.invoke({"history": history})
-    history.append(AIMessage(content=opening.content))
-    print(f"\nTutor: {opening.content}\n")
-
-    while True:
-        try:
-            user_input = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n\nSession ended.")
-            return
-
-        if not user_input:
-            continue
-        if user_input in EXIT_COMMANDS:
-            print("\nSession ended.")
-            return
-
-        history.append(HumanMessage(content=user_input))
-        try:
-            response = chain.invoke({"history": history})
-        except Exception as exc:
-            print(f"\n[chain error: {exc}]\n")
-            history.pop()
-            continue
-
-        history.append(AIMessage(content=response.content))
-        print(f"\nTutor: {response.content}\n")
+    print(f"\nMastery — user: {user_id}")
+    if topic:
+        print(f"Topic filter: {topic}")
+    print(f"{'Kind':<8} {'Name':<32} {'Score':>6} {'/5':>6} {'N':>4}")
+    print("-" * 60)
+    for row in rows:
+        print(
+            f"{row.kind:<8} {row.name[:32]:<32} "
+            f"{row.score:>6.2f} {row.score_1_to_5:>6.1f} {row.num_evaluations:>4}"
+        )
+    print()
 
 
 def main(argv: list[str]) -> int:
     """CLI entry point. Returns a process exit code."""
     load_dotenv()
+    queries.init_db()
+
+    if len(argv) > 1 and argv[1] == "mastery":
+        topic_filter = argv[2] if len(argv) > 2 else None
+        print_mastery_table(topic=topic_filter)
+        return 0
 
     if len(argv) > 1:
         topic_id = argv[1]
@@ -149,7 +91,8 @@ def main(argv: list[str]) -> int:
         topic_id = pick_topic_interactive()
 
     try:
-        run_session(topic_id)
+        with queries.get_connection() as conn:
+            run_session(conn, DEFAULT_USER_ID, topic_id)
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

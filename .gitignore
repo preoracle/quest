@@ -8,4 +8,4 @@ venv/
 build/
 dist/
 .DS_Store
-docs
+quest.db
