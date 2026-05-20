@@ -1,0 +1,33 @@
+topic: tool_calling_agents
+display_name: Tool-Calling & Agents
+
+concepts:
+  - id: tool_schema_contract
+    name: Tool schema contract
+    description: Name, description, parameters (JSON schema); how the model chooses among declared tools.
+    prerequisites: []
+
+  - id: single_turn_tool_use
+    name: Single-turn tool use
+    description: Model emits a tool call; runtime executes; result returned as a message before final reply.
+    prerequisites: [tool_schema_contract]
+
+  - id: agent_observe_act_loop
+    name: Observe–act loop
+    description: Repeated plan → tool → observe until stop condition; max steps and error handling.
+    prerequisites: [single_turn_tool_use]
+
+  - id: tool_selection_ambiguity
+    name: Tool selection ambiguity
+    description: Overlapping tools, vague descriptions, and wrong-tool calls; prompt and schema fixes.
+    prerequisites: [tool_schema_contract, agent_observe_act_loop]
+
+  - id: parallel_and_sequential_tools
+    name: Parallel vs sequential tools
+    description: When to batch calls, dependencies between results, and latency tradeoffs.
+    prerequisites: [single_turn_tool_use]
+
+  - id: agent_failure_modes
+    name: Agent failure modes
+    description: Infinite loops, hallucinated tool args, ignoring observations, and unsafe actions.
+    prerequisites: [agent_observe_act_loop, tool_selection_ambiguity]

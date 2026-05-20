@@ -1,0 +1,33 @@
+topic: memory_systems
+display_name: Memory Systems
+
+concepts:
+  - id: context_window_limits
+    name: Context window limits
+    description: Fixed token budget; what actually fits in “memory” for one request vs across sessions.
+    prerequisites: []
+
+  - id: short_term_working_memory
+    name: Short-term working memory
+    description: Chat history in the prompt; truncation, summarization, and sliding windows.
+    prerequisites: [context_window_limits]
+
+  - id: long_term_external_memory
+    name: Long-term external memory
+    description: Stores outside the model—DB, files, vector index; read/write policies per session.
+    prerequisites: [context_window_limits]
+
+  - id: summarization_for_memory
+    name: Summarization for memory
+    description: Compressing past turns or facts; what gets lost and how to retrieve detail later.
+    prerequisites: [short_term_working_memory]
+
+  - id: episodic_vs_semantic_memory
+    name: Episodic vs semantic memory
+    description: “What happened” vs “what is true”; different storage and retrieval patterns in agents.
+    prerequisites: [long_term_external_memory, summarization_for_memory]
+
+  - id: memory_in_agent_architectures
+    name: Memory in agent architectures
+    description: Scratchpad, reflection, user profile, and tool-backed recall in multi-step agents.
+    prerequisites: [episodic_vs_semantic_memory, short_term_working_memory]

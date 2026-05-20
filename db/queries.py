@@ -210,6 +210,78 @@ def get_checkpoint_db_path() -> Path:
     return _CHECKPOINT_DB_PATH
 
 
+def reset_user_progress(
+    conn: sqlite3.Connection,
+    user_id: str,
+    *,
+    topic: str | None = None,
+) -> dict[str, int]:
+    """Delete sessions, turns, and mastery for a user.
+
+    Concept rows survive (they come from `concepts/*.yaml`). If `topic` is
+    given, scopes the reset to one topic. Returns row counts deleted.
+    """
+    if topic:
+        turns_cur = conn.execute(
+            """
+            DELETE FROM turns WHERE session_id IN (
+                SELECT id FROM sessions WHERE user_id = ? AND topic = ?
+            )
+            """,
+            (user_id, topic),
+        )
+        sessions_cur = conn.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND topic = ?",
+            (user_id, topic),
+        )
+        mastery_cur = conn.execute(
+            """
+            DELETE FROM mastery
+            WHERE user_id = ? AND concept_id IN (
+                SELECT id FROM concepts WHERE topic = ?
+            )
+            """,
+            (user_id, topic),
+        )
+    else:
+        turns_cur = conn.execute(
+            """
+            DELETE FROM turns WHERE session_id IN (
+                SELECT id FROM sessions WHERE user_id = ?
+            )
+            """,
+            (user_id,),
+        )
+        sessions_cur = conn.execute(
+            "DELETE FROM sessions WHERE user_id = ?",
+            (user_id,),
+        )
+        mastery_cur = conn.execute(
+            "DELETE FROM mastery WHERE user_id = ?",
+            (user_id,),
+        )
+    conn.commit()
+    return {
+        "turns": int(turns_cur.rowcount or 0),
+        "sessions": int(sessions_cur.rowcount or 0),
+        "mastery": int(mastery_cur.rowcount or 0),
+    }
+
+
+def delete_checkpoint_db() -> list[Path]:
+    """Remove the LangGraph SQLite checkpoint DB and its WAL sidecars.
+
+    Returns the list of paths that were removed.
+    """
+    removed: list[Path] = []
+    base = _CHECKPOINT_DB_PATH
+    for path in (base, base.with_suffix(".db-shm"), base.with_suffix(".db-wal")):
+        if path.exists():
+            path.unlink()
+            removed.append(path)
+    return removed
+
+
 def get_open_session(
     conn: sqlite3.Connection,
     user_id: str,

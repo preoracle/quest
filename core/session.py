@@ -4,39 +4,13 @@ from __future__ import annotations
 
 import sqlite3
 
-from core.models import EvaluatorOutput
-from core.session_api import EvaluationView, SessionView, start_session, submit_turn
+from core.session_api import SessionView, start_session, submit_turn
+from core.ui import QuestCliUi
 from db import queries
 
 EXIT_COMMANDS = {":quit", ":q", ":exit"}
-PAUSE_COMMANDS = EXIT_COMMANDS
+PAUSE_COMMANDS = EXIT_COMMANDS | {"/quit", "/q", "/exit"}
 DEFAULT_USER_ID = "default"
-
-
-def _print_view(view: SessionView, *, show_eval: EvaluationView | None = None) -> None:
-    """Print CLI formatting for a session view."""
-    ev = show_eval or view.last_evaluation
-    if ev:
-        gaps = ", ".join(ev.gaps) if ev.gaps else "none"
-        concept_note = ""
-        if ev.inferred_concept_id:
-            concept_note = (
-                f" | concept: {ev.inferred_concept_id}"
-                f" ({ev.inferred_concept_confidence:.0%})"
-            )
-        print(
-            f"\n[score {ev.score}/5 — {ev.reasoning}"
-            f" | gaps: {gaps}{concept_note}]\n"
-        )
-
-    if view.done:
-        print(view.summary or view.tutor_message or "Session complete.")
-        return
-
-    if view.focus:
-        print(f"[focus: {view.focus}]")
-    if view.tutor_message:
-        print(f"\nTutor: {view.tutor_message}\n")
 
 
 def run_session(
@@ -45,39 +19,87 @@ def run_session(
     topic_id: str,
 ) -> None:
     """Run or resume a Socratic session until the user pauses or the DAG completes."""
+    ui = QuestCliUi()
     open_id = queries.get_open_session(conn, user_id, topic_id)
     view = start_session(conn, user_id, topic_id, resume=True)
 
-    print(f"\nQuest — topic: {view.topic_display}")
-    if open_id:
-        print("Resuming open session.")
-    print("`:q` to pause. Session ends when all concepts are mastered.\n")
+    progress = ui.build_progress(conn, user_id, view)
+    ui.sticky.enable(ui.build_header_lines(view, progress))
 
-    if view.done:
-        _print_view(view)
-        return
+    try:
+        ui.render_session_start(view, resuming=bool(open_id))
+        ui.render_turn(view, progress)
 
-    _print_view(view)
-
-    while view.waiting_for_answer:
-        try:
-            user_input = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n\nPaused. Run again to resume.")
+        if view.done:
             return
 
-        if not user_input:
-            continue
-        if user_input in PAUSE_COMMANDS:
-            print("\nPaused. Run again to resume.")
-            return
+        turns_since_checkpoint = 0
 
-        prev_eval = view.last_evaluation
-        view = submit_turn(conn, view.session_id, user_input)
-        if view.last_evaluation and view.last_evaluation != prev_eval:
-            _print_view(view, show_eval=view.last_evaluation)
-        elif view.done:
-            _print_view(view)
-            return
-        else:
-            _print_view(view)
+        while view.waiting_for_answer:
+            try:
+                user_input = ui.prompt_answer().strip()
+            except (EOFError, KeyboardInterrupt):
+                ui.render_paused()
+                return
+
+            if not user_input:
+                continue
+            if user_input in PAUSE_COMMANDS:
+                ui.render_paused()
+                return
+            if user_input.startswith("/"):
+                if _handle_command(ui, conn, user_id, view, user_input):
+                    ui.render_paused()
+                    return
+                continue
+
+            prev_eval = view.last_evaluation
+            with ui.thinking():
+                view = submit_turn(conn, view.session_id, user_input)
+            turns_since_checkpoint += 1
+
+            progress = ui.build_progress(conn, user_id, view)
+            synthesis = (
+                view.last_evaluation
+                if view.last_evaluation != prev_eval
+                else None
+            )
+            ui.sticky.update(ui.build_header_lines(view, progress))
+            ui.render_turn(view, progress, synthesis=synthesis)
+
+            if view.done:
+                return
+
+            if turns_since_checkpoint % 5 == 0:
+                ui.render_checkpoint(turns_since_checkpoint, progress)
+    finally:
+        ui.sticky.disable()
+
+
+def _handle_command(
+    ui: QuestCliUi,
+    conn: sqlite3.Connection,
+    user_id: str,
+    view: SessionView,
+    raw: str,
+) -> bool:
+    """Handle slash commands. Returns True when the session should pause."""
+    command = raw.split()[0].lower()
+    if command in PAUSE_COMMANDS:
+        return True
+    if command == "/help":
+        ui.render_help()
+        return False
+    if command == "/last":
+        ui.render_last(view.last_evaluation)
+        return False
+    if command == "/progress":
+        ui.render_progress(ui.build_progress(conn, user_id, view))
+        return False
+    if command == "/mastery":
+        rows = queries.get_mastery_for_user(conn, user_id)
+        ui.render_mastery(rows)
+        return False
+
+    ui.console.print(f"[dim]Unknown command: {command}. Try /help.[/dim]\n")
+    return False

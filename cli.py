@@ -65,6 +65,42 @@ def print_mastery_table(user_id: str = DEFAULT_USER_ID, topic: str | None = None
     print()
 
 
+def reset_progress(
+    user_id: str = DEFAULT_USER_ID,
+    *,
+    topic: str | None = None,
+    assume_yes: bool = False,
+) -> int:
+    """Wipe sessions, turns, mastery, and checkpoints. Concept YAMLs survive."""
+    queries.init_db()
+    scope = f"topic '{topic}'" if topic else "ALL topics"
+    print(f"\nThis will delete sessions, turns, mastery, and checkpoints for {scope}.")
+    print(f"User: {user_id}")
+    print("Concept maps in concepts/*.yaml are NOT touched.\n")
+    if not assume_yes:
+        answer = input("Type 'yes' to continue: ").strip().lower()
+        if answer != "yes":
+            print("Aborted.")
+            return 1
+
+    with queries.get_connection() as conn:
+        counts = queries.reset_user_progress(conn, user_id, topic=topic)
+    removed = queries.delete_checkpoint_db() if topic is None else []
+
+    print(
+        f"Deleted: {counts['turns']} turns, "
+        f"{counts['sessions']} sessions, "
+        f"{counts['mastery']} mastery rows."
+    )
+    if removed:
+        names = ", ".join(p.name for p in removed)
+        print(f"Removed checkpoint files: {names}")
+    elif topic is None:
+        print("No checkpoint DB to remove.")
+    print()
+    return 0
+
+
 def main(argv: list[str]) -> int:
     """CLI entry point."""
     load_dotenv()
@@ -74,6 +110,12 @@ def main(argv: list[str]) -> int:
         topic_filter = argv[2] if len(argv) > 2 else None
         print_mastery_table(topic=topic_filter)
         return 0
+
+    if len(argv) > 1 and argv[1] == "reset":
+        assume_yes = "--yes" in argv[2:] or "-y" in argv[2:]
+        positional = [a for a in argv[2:] if not a.startswith("-")]
+        topic = positional[0] if positional else None
+        return reset_progress(topic=topic, assume_yes=assume_yes)
 
     if len(argv) > 1:
         topic_id = argv[1]

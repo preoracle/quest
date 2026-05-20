@@ -7,9 +7,11 @@ readme = "docs/BRIEF.md"
 dependencies = [
     "langchain>=0.3.0",
     "langchain-anthropic>=0.3.0",
+    "prompt-toolkit>=3.0.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.2",
+    "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]

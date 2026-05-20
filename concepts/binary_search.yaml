@@ -1,0 +1,33 @@
+topic: binary_search
+display_name: Binary Search
+
+concepts:
+  - id: sorted_precondition
+    name: Sorted precondition
+    description: Why binary search requires a sorted (or otherwise monotonic) sequence; what breaks if order is violated.
+    prerequisites: []
+
+  - id: search_space_halving
+    name: Search space halving
+    description: The core idea — every comparison rules out half of the remaining candidates; how that compounds.
+    prerequisites: []
+
+  - id: midpoint_computation
+    name: Midpoint computation
+    description: Computing mid from lo and hi; the (lo + hi) / 2 overflow trap and lo + (hi - lo) / 2 fix.
+    prerequisites: [search_space_halving]
+
+  - id: loop_invariant_and_boundaries
+    name: Loop invariant and boundaries
+    description: Closed [lo, hi] vs half-open [lo, hi) intervals; the invariant maintained each iteration; off-by-one bugs.
+    prerequisites: [midpoint_computation, sorted_precondition]
+
+  - id: logarithmic_complexity
+    name: Logarithmic complexity
+    description: Why halving yields O(log n) time and O(1) extra space; how it compares with linear search.
+    prerequisites: [search_space_halving]
+
+  - id: binary_search_variants
+    name: Binary search variants
+    description: lower_bound, upper_bound, first/last occurrence, and "binary search on the answer" over a monotonic predicate.
+    prerequisites: [loop_invariant_and_boundaries, logarithmic_complexity]

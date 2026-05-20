@@ -1,0 +1,33 @@
+topic: prompt_engineering
+display_name: Prompt Engineering
+
+concepts:
+  - id: instructions_vs_context
+    name: Instructions vs context
+    description: System/developer rules vs user data; what belongs in each layer and why order matters.
+    prerequisites: []
+
+  - id: few_shot_demonstrations
+    name: Few-shot demonstrations
+    description: Example input/output pairs; when they help, when they anchor wrong patterns.
+    prerequisites: [instructions_vs_context]
+
+  - id: chain_of_thought
+    name: Chain-of-thought prompting
+    description: Asking the model to reason stepwise; benefits, verbosity cost, and verification.
+    prerequisites: [instructions_vs_context]
+
+  - id: structured_outputs
+    name: Structured outputs
+    description: JSON/schema/tool constraints; parsing failures and how prompts reinforce format.
+    prerequisites: [few_shot_demonstrations]
+
+  - id: prompt_iteration
+    name: Prompt iteration
+    description: Hypothesis → eval → change one variable; regression when “fixes” break other cases.
+    prerequisites: [few_shot_demonstrations, structured_outputs]
+
+  - id: prompt_injection_defense
+    name: Prompt injection and delimiters
+    description: Untrusted content inside context; separation, quoting, and policy limits.
+    prerequisites: [instructions_vs_context, structured_outputs]
