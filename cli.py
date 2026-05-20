@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
-from dotenv import load_dotenv
-
+from core.paths import env_file, load_quest_env
 from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
 from core.topic_picker import create_topic_from_goal, pick_topic_interactive
 from core.topics import list_topics, load_topic
@@ -101,26 +101,50 @@ def cmd_topic_new(argv_tail: list[str]) -> int:
     return 0
 
 
+def _require_api_key() -> int | None:
+    """Return an exit code if ANTHROPIC_API_KEY is missing."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key.startswith("sk-ant-"):
+        return None
+    print(
+        "Quest needs ANTHROPIC_API_KEY to run sessions.\n\n"
+        "  export ANTHROPIC_API_KEY=sk-ant-...\n"
+        "  # or put it in:\n"
+        f"  {env_file()}\n",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     if argv is None:
         argv = sys.argv
-    load_dotenv()
+    load_quest_env()
     queries.init_db()
 
+    from core.picker_types import REPLAY_FLAGS
+
     raw = argv[1:]
-    fresh = "--fresh" in raw or "-f" in raw
-    args = [a for a in raw if a not in ("--fresh", "-f")]
+    fresh = any(flag in raw for flag in REPLAY_FLAGS)
+    args = [a for a in raw if a not in REPLAY_FLAGS]
 
     if not args:
         try:
-            topic_id = pick_topic_interactive()
+            selection = pick_topic_interactive()
         except SystemExit as exc:  # pick_topic_interactive raises 1 on empty catalog
             code = exc.code
             return int(code) if isinstance(code, int) else 1
+        if (code := _require_api_key()) is not None:
+            return code
         try:
             with queries.get_connection() as conn:
-                run_session(conn, DEFAULT_USER_ID, topic_id, replay=fresh)
+                run_session(
+                    conn,
+                    DEFAULT_USER_ID,
+                    selection.topic_id,
+                    replay=fresh or selection.replay,
+                )
         except FileNotFoundError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
@@ -149,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
         return reset_progress(topic=topic, assume_yes=assume_yes)
 
     topic_id = args[0]
+    if (code := _require_api_key()) is not None:
+        return code
     try:
         with queries.get_connection() as conn:
             run_session(conn, DEFAULT_USER_ID, topic_id, replay=fresh)

@@ -122,37 +122,39 @@ def build_quest_graph(
     def ask_question(state: QuestState) -> dict:
         """Generate the next Socratic question for the current concept."""
         topic_id = state["topic_id"]
-        history = messages_from_dicts(state.get("history") or [])
+        persisted = messages_from_dicts(state.get("history") or [])
         concept_name = state.get("current_concept_name") or "this topic"
         scope = state.get("current_concept_scope") or ""
-        scope_note = ""
-        if scope:
-            scope_note = (
-                f"[Probe scope — shape your question; do not quote verbatim: {scope}]\n"
-            )
+        turn_count = state.get("concept_turn_count", 0)
 
-        if state.get("concept_turn_count", 0) == 0:
-            prompt = (
-                f"{scope_note}{_TASK_INSTRUCTION}\n"
-                f"Opening question for concept '{concept_name}'."
+        # Opening turn: one-shot instructor steer (not saved). Follow-ups use real dialogue.
+        if turn_count == 0:
+            steer = (
+                "[Instructor note — not the student's words. "
+                f"Ask your opening Socratic question for concept '{concept_name}'. "
+                f"{_TASK_INSTRUCTION}"
             )
+            if scope:
+                steer += f" Probe scope (shape the question; do not quote verbatim): {scope}"
+            steer += "]"
+            invoke_history = [HumanMessage(content=steer)]
         else:
-            prompt = (
-                f"{scope_note}{_TASK_INSTRUCTION}\n"
-                f"Next question for '{concept_name}'; build on the student's last answer."
-            )
-        history.append(HumanMessage(content=prompt))
+            invoke_history = persisted
 
         chain = build_socratic_chain(topic=topic_id)
-        response = chain.invoke({"history": history})
+        response = chain.invoke({"history": invoke_history})
         tutor_text = message_content(response)
-        history.append(AIMessage(content=tutor_text))
+
+        if turn_count == 0:
+            new_history = [AIMessage(content=tutor_text)]
+        else:
+            new_history = persisted + [AIMessage(content=tutor_text)]
 
         turn_idx = state.get("turn_idx", 0)
         queries.record_turn(conn, state["session_id"], turn_idx, "tutor", tutor_text)
 
         return {
-            "history": messages_to_dicts(history),
+            "history": messages_to_dicts(new_history),
             "tutor_message": tutor_text,
             "last_tutor_question": tutor_text,
             "turn_idx": turn_idx + 1,
@@ -186,10 +188,14 @@ def build_quest_graph(
             evaluator_concept_id=evaluation.inferred_concept_id,
             evaluator_concept_confidence=evaluation.inferred_concept_confidence,
         )
+        history = messages_from_dicts(state.get("history") or [])
+        history.append(HumanMessage(content=state["user_input"]))
+
         return {
             "turn_idx": turn_idx + 1,
             "last_score": evaluation.score,
             "last_evaluation": evaluation.model_dump(),
+            "history": messages_to_dicts(history),
         }
 
     def update_mastery(state: QuestState) -> dict:

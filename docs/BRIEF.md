@@ -74,9 +74,10 @@ quest topic new "binary search for coding interviews"
 quest topic new --yes "what is a RAG pipeline"    # skip confirm
 quest topic new --force "..."                     # overwrite existing slug
 
-# Study — search-first picker (type `new` to create a topic)
+# Study — Rich topic catalog (default); optional arrow-key wizard
 quest
 quest rag_pipeline
+# QUEST_WIZARD=1 quest   # questionary menus instead of catalog + › prompt
 
 # Full DAG again this run (scheduling ignores stored mastery; mastery still updates)
 quest rag_pipeline --fresh

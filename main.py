@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="Quest",
     description="Socratic tutor API",
-    version="0.1.0",
+    version="0.1.1",
     lifespan=lifespan,
 )
 app.add_middleware(

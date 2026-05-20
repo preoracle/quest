@@ -7,8 +7,6 @@ import sqlite3
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
-from textwrap import shorten
 from typing import Iterator
 
 from prompt_toolkit import PromptSession
@@ -16,16 +14,17 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from core.session_api import EvaluationView, SessionView
-from core.topics import load_topic
 from core.paths import cli_history_path
+from core.session_api import EvaluationView, SessionView
+from core.terminal_format import normalize_message, tutor_markup
+from core.topics import load_topic
 from db import queries
+
 DEPTH_THRESHOLD = 4.0
 STICKY_ROWS = 3
 
@@ -70,16 +69,10 @@ class ProgressSnapshot:
 
 
 class StickyHeader:
-    """Pin a small header at the top of the terminal via DECSTBM scroll region.
-
-    The terminal reserves the top `STICKY_ROWS` rows for the header; the rest
-    becomes a scroll region where the chat flows naturally. Subsequent writes
-    (Rich prints, prompt_toolkit input) scroll only within that region.
-    """
+    """Pin a small header at the top of the terminal via DECSTBM scroll region."""
 
     def __init__(self) -> None:
         self._enabled = False
-        self._lines: list[str] = ["", "", ""]
         self._is_tty = sys.stdout.isatty()
 
     def enable(self, lines: list[str]) -> None:
@@ -101,7 +94,6 @@ class StickyHeader:
         if not self._enabled:
             return
         cols, _ = shutil.get_terminal_size((80, 24))
-        self._lines = lines
         sys.stdout.write("\x1b7")
         for i, line in enumerate(lines[:STICKY_ROWS], start=1):
             sys.stdout.write(f"\x1b[{i};1H\x1b[2K")
@@ -124,8 +116,8 @@ class QuestCliUi:
     """Rich/prompt-toolkit presentation for the Quest session loop."""
 
     def __init__(self) -> None:
-        self.console = Console()
-        self._prompt = _make_prompt_session()
+        self.console = Console(soft_wrap=True)
+        self._prompt = make_cli_prompt_session()
         self.sticky = StickyHeader()
 
     def build_header_lines(
@@ -134,18 +126,19 @@ class QuestCliUi:
         progress: ProgressSnapshot,
     ) -> list[str]:
         """Two visible lines + a separator for the sticky top header."""
-        focus = view.focus or "complete"
-        progress_label = f"{progress.at_depth} of {progress.total} concepts at depth"
+        focus = _shorten(view.focus or "done", 28)
+        progress_label = f"{progress.at_depth}/{progress.total} at depth"
         last_score = view.last_evaluation.score if view.last_evaluation else 0
         blocks = _blocks(last_score)
 
         line1 = (
-            f"\x1b[1m Quest\x1b[0m \x1b[2m·\x1b[0m {view.topic_display}"
+            f"\x1b[1m Quest\x1b[0m \x1b[2m·\x1b[0m "
+            f"{_shorten(view.topic_display, 32)}"
             f"   \x1b[2m{progress_label}\x1b[0m"
         )
         line2 = (
-            f" \x1b[2mfocus:\x1b[0m \x1b[33m{focus}\x1b[0m"
-            f"   \x1b[2msession depth\x1b[0m \x1b[33m{blocks}\x1b[0m"
+            f" \x1b[2mnow\x1b[0m \x1b[33m{focus}\x1b[0m"
+            f"   \x1b[2mlast\x1b[0m \x1b[33m{blocks}\x1b[0m"
         )
         cols, _ = shutil.get_terminal_size((80, 24))
         line3 = "\x1b[2m" + ("─" * max(0, cols)) + "\x1b[0m"
@@ -187,10 +180,30 @@ class QuestCliUi:
         )
 
     def render_session_start(self, view: SessionView, *, resuming: bool) -> None:
-        del view
         if resuming:
-            self.console.print("[dim]resuming open session[/dim]")
-        self.console.print("[dim]type /help for commands, /quit to pause[/dim]\n")
+            self.console.print(
+                f"[dim]Resuming {view.topic_display} — [/dim]"
+                f"[dim]/quit pauses · /help · /last for evaluator detail[/dim]\n"
+            )
+        else:
+            self.console.print(
+                f"[dim]{view.topic_display} — answer below. "
+                f"/quit pauses · /help[/dim]\n"
+            )
+
+    def render_user_reply(self, text: str) -> None:
+        """Show the learner's last answer in the thread."""
+        body = normalize_message(text)
+        self.console.print(
+            Panel(
+                body,
+                title="[dim]You[/dim]",
+                title_align="left",
+                border_style="dim",
+                box=box.MINIMAL,
+                padding=(0, 1),
+            )
+        )
 
     def render_turn(
         self,
@@ -198,196 +211,185 @@ class QuestCliUi:
         progress: ProgressSnapshot,
         *,
         synthesis: EvaluationView | None = None,
+        user_reply: str | None = None,
     ) -> None:
         del progress
+        if user_reply:
+            self.render_user_reply(user_reply)
+
         if synthesis:
-            self.render_synthesis(synthesis)
+            self.render_feedback(synthesis)
 
         if view.done:
             self.render_completion(view)
             return
 
-        if view.tutor_message:
-            body = Text()
-            if view.focus_scope:
-                body.append("What to figure out: ", style="dim")
-                body.append(f"{view.focus_scope}\n\n", style="dim italic")
-            body.append(view.tutor_message, style="bold")
-            title = "[yellow]tutor[/yellow]"
-            if view.focus:
-                title = f"[yellow]tutor[/yellow] · {view.focus}"
-            self.console.print(
-                Panel(
-                    body,
-                    title=title,
-                    title_align="left",
-                    border_style="yellow",
-                    box=box.MINIMAL,
-                    padding=(1, 2),
+        if not view.tutor_message:
+            return
+
+        body_parts: list[RenderableType] = []
+        if view.focus_scope:
+            body_parts.append(
+                Text.from_markup(
+                    f"[dim]{normalize_message(view.focus_scope)}[/dim]\n"
                 )
             )
-            self.console.print()
-
-    def render_status(self, view: SessionView, progress: ProgressSnapshot) -> None:
-        table = Table.grid(expand=True)
-        table.add_column(ratio=1)
-        table.add_column(ratio=1)
-        focus = view.focus or "complete"
-        covered = ", ".join(item.name for item in progress.covered[:2]) or "none yet"
-        if len(progress.covered) > 2:
-            covered += f" +{len(progress.covered) - 2}"
-
-        table.add_row(
-            _label_value("focus", focus),
-            _label_value("progress", f"{progress.at_depth} of {progress.total} concepts"),
+        body_parts.append(tutor_markup(view.tutor_message))
+        body: RenderableType = (
+            Group(*body_parts) if len(body_parts) > 1 else body_parts[0]
         )
-        table.add_row(
-            _label_value("session", _blocks(view.last_evaluation.score if view.last_evaluation else 0)),
-            _label_value("covered", covered),
+
+        self.console.print(
+            Panel(
+                body,
+                title="[bold #e6c364]Question[/bold #e6c364]",
+                title_align="left",
+                border_style="#e6c364",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
         )
-        self.console.print(table)
         self.console.print()
 
-    def render_synthesis(self, evaluation: EvaluationView) -> None:
-        gap = evaluation.gaps[0] if evaluation.gaps else "no sharp gap detected"
-        text = shorten(gap, width=80, placeholder="...")
-        style = "yellow" if evaluation.score >= 3 else "red"
-        self.console.print(Rule(f"{evaluation.score}/5 · gap: {text}", style=style))
+    def render_feedback(self, evaluation: EvaluationView) -> None:
+        """One-line digest after an answer — details via /last."""
+        gap = evaluation.gaps[0] if evaluation.gaps else "—"
+        gap = normalize_message(gap)
+        if len(gap) > 72:
+            gap = gap[:69] + "…"
+        color = "green" if evaluation.score >= 4 else "yellow" if evaluation.score >= 3 else "red"
+        self.console.print(
+            f"[dim]Your last answer[/dim]  [{color}]{evaluation.score}/5[/{color}]"
+            f"  [dim]·[/dim]  {gap}\n"
+            f"[dim]Scored on this Q→A only · /last for evaluator detail[/dim]\n"
+        )
 
     def render_checkpoint(self, turns: int, progress: ProgressSnapshot) -> None:
-        weakest = progress.weakest.name if progress.weakest else "none"
         self.console.print(
-            Rule(
-                (
-                    f"checkpoint · {turns} turns · "
-                    f"{progress.at_depth} of {progress.total} at depth · "
-                    f"weakest: {weakest}"
-                ),
-                style="dim",
-            )
+            f"[dim]── {turns} turns · {progress.at_depth}/{progress.total} at depth · "
+            f"/progress for map ──[/dim]\n"
         )
 
     def render_completion(self, view: SessionView) -> None:
+        text = view.summary or view.tutor_message or "Session complete."
         self.console.print(
             Panel(
-                view.summary or view.tutor_message or "Session complete.",
-                title="[green]session complete[/green]",
+                tutor_markup(text),
+                title="[green]Done[/green]",
                 title_align="left",
                 border_style="green",
-                box=box.MINIMAL,
-                padding=(1, 2),
+                box=box.ROUNDED,
+                padding=(0, 1),
             )
         )
+        self.console.print()
 
     def render_help(self) -> None:
-        table = Table(
-            title="Quest commands",
-            box=box.SIMPLE,
-            show_header=False,
-            padding=(0, 2),
-        )
-        table.add_column("command", style="bold yellow")
-        table.add_column("meaning", style="dim")
-        table.add_row("/progress", "show concept progress for this topic")
-        table.add_row("/last", "show full evaluator output for the previous answer")
-        table.add_row("/mastery", "show mastery across all topics")
-        table.add_row("/quit", "pause and resume later")
-        table.add_row(":q", "same as /quit")
-        table.add_row("(cli)", "python cli.py TOPIC --fresh  — new run, full DAG replay")
-        self.console.print(table)
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        table.add_column("cmd", style="bold #e6c364", width=12)
+        table.add_column("what", style="")
+        table.add_row("/quit", "pause; run quest TOPIC to resume")
+        table.add_row("/last", "full evaluator notes on your previous answer")
+        table.add_row("/progress", "concept map + depth for this topic")
+        table.add_row("/mastery", "all topics")
+        self.console.print(Panel(table, title="Commands", border_style="dim"))
         self.console.print()
 
     def render_last(self, evaluation: EvaluationView | None) -> None:
         if evaluation is None:
-            self.console.print("[dim]No synthesis yet.[/dim]\n")
+            self.console.print("[dim]No evaluated answer yet.[/dim]\n")
             return
-        gaps = "\n".join(f"- {gap}" for gap in evaluation.gaps) or "- none"
+        gaps = "\n".join(f"• {normalize_message(g)}" for g in evaluation.gaps) or "• —"
         concept = evaluation.inferred_concept_id or "unknown"
-        body = (
-            f"score: {evaluation.score}/5\n"
-            f"concept: {concept} ({evaluation.inferred_concept_confidence:.0%})\n"
-            f"reason: {evaluation.reasoning}\n\n"
-            f"gaps:\n{gaps}"
+        body = Group(
+            Text.from_markup(
+                f"[dim]Score[/dim]  [bold]{evaluation.score}/5[/bold]\n"
+                f"[dim]Concept[/dim]  {concept} "
+                f"({evaluation.inferred_concept_confidence:.0%})\n"
+                f"[dim]Reason[/dim]  {normalize_message(evaluation.reasoning)}\n"
+            ),
+            Text("\n"),
+            Text.from_markup(f"[dim]Gaps[/dim]\n{gaps}"),
         )
         self.console.print(
             Panel(
                 body,
-                title="[yellow]last synthesis[/yellow]",
-                title_align="left",
+                title="[yellow]Evaluator[/yellow]",
                 border_style="yellow",
-                box=box.MINIMAL,
-                padding=(1, 2),
+                box=box.ROUNDED,
+                padding=(0, 1),
             )
         )
         self.console.print()
 
     def render_progress(self, progress: ProgressSnapshot) -> None:
-        table = Table(
-            title=f"progress · {progress.topic_display}",
-            box=box.SIMPLE,
-            show_lines=False,
-        )
+        table = Table(box=box.SIMPLE_HEAVY, border_style="dim", padding=(0, 0))
         table.add_column("", width=2)
-        table.add_column("depth", style="yellow")
+        table.add_column("depth", style="#e6c364", width=12)
         table.add_column("concept")
-        table.add_column("turns", justify="right", style="dim")
+        table.add_column("n", justify="right", style="dim", width=4)
         for item in progress.items:
-            marker = ">" if item.is_current else ""
+            marker = "›" if item.is_current else ""
             table.add_row(
                 marker,
                 _blocks(round(item.score_1_to_5)),
                 item.name,
                 str(item.num_evaluations),
             )
-        self.console.print(table)
+        self.console.print(
+            Panel(
+                table,
+                title=f"[bold]{progress.topic_display}[/bold]",
+                border_style="dim",
+            )
+        )
         self.console.print()
 
     def render_mastery(self, rows: list[queries.MasteryRow]) -> None:
         if not rows:
             self.console.print("[dim]No mastery recorded yet.[/dim]\n")
             return
-        table = Table(title="mastery", box=box.SIMPLE)
+        table = Table(box=box.SIMPLE, border_style="dim")
         table.add_column("topic", style="dim")
-        table.add_column("kind")
         table.add_column("name")
-        table.add_column("depth", style="yellow")
-        table.add_column("n", justify="right")
+        table.add_column("depth", style="#e6c364")
+        table.add_column("n", justify="right", style="dim")
         for row in rows:
             table.add_row(
                 row.topic,
-                row.kind,
-                row.name,
+                row.name[:40],
                 _blocks(round(row.score_1_to_5)),
                 str(row.num_evaluations),
             )
-        self.console.print(table)
+        self.console.print(Panel(table, title="Mastery", border_style="dim"))
         self.console.print()
 
     def render_paused(self) -> None:
-        self.console.print("\n[dim]Paused. Run again to resume.[/dim]\n")
+        self.console.print("\n[dim]Paused — same topic resumes next time.[/dim]\n")
 
     def prompt_answer(self) -> str:
         return self._prompt.prompt(
             [("class:prompt", "› ")],
             multiline=True,
-            bottom_toolbar="Enter submits · Esc+Enter inserts newline · /help",
+            bottom_toolbar="Enter send · Esc+Enter newline · /help · /quit",
         )
 
     @contextmanager
     def thinking(self) -> Iterator[None]:
-        with self.console.status("[dim]◇ thinking...[/dim]", spinner="dots"):
+        with self.console.status("[dim]Thinking…[/dim]", spinner="dots"):
             yield
 
 
-def _make_prompt_session() -> PromptSession[str]:
+def make_cli_prompt_session() -> PromptSession[str]:
+    """Shared prompt session for session loop and topic picker."""
     bindings = KeyBindings()
 
     @bindings.add("enter")
-    def _(event) -> None:  # pragma: no cover - prompt-toolkit callback
+    def _(event) -> None:  # pragma: no cover
         event.current_buffer.validate_and_handle()
 
     @bindings.add("escape", "enter")
-    def _(event) -> None:  # pragma: no cover - prompt-toolkit callback
+    def _(event) -> None:  # pragma: no cover
         event.current_buffer.insert_text("\n")
 
     style = Style.from_dict(
@@ -403,6 +405,10 @@ def _make_prompt_session() -> PromptSession[str]:
     )
 
 
+# Back-compat for topic_picker
+_make_prompt_session = make_cli_prompt_session
+
+
 def _label_value(label: str, value: str) -> Text:
     text = Text()
     text.append(f"{label:<9}", style="dim")
@@ -413,6 +419,13 @@ def _label_value(label: str, value: str) -> Text:
 def _blocks(score: int | float) -> str:
     filled = max(0, min(5, int(round(score))))
     return " ".join(["■"] * filled + ["□"] * (5 - filled))
+
+
+def _shorten(text: str, max_len: int) -> str:
+    text = text.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
 
 
 def _clip_visible(text: str, max_cols: int) -> str:

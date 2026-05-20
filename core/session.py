@@ -78,7 +78,12 @@ def run_session(
                 else None
             )
             ui.sticky.update(ui.build_header_lines(view, progress))
-            ui.render_turn(view, progress, synthesis=synthesis)
+            ui.render_turn(
+                view,
+                progress,
+                synthesis=synthesis,
+                user_reply=user_input,
+            )
 
             if view.done:
                 return

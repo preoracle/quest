@@ -2,84 +2,57 @@
 
 **Quest** is a Socratic AI tutor: it never explains, only asks the next better question. A separate evaluator scores understanding; concept DAGs, mastery, and SM-2 scheduling drive what you practice next.
 
-**Install (target):** `pip install quest-ai` → run `quest`
+**Install:** `pip install -U quest-ai` → `quest` (Python **≥ 3.11**)
 
 ---
 
-## Phase A — Ship the CLI (current)
+## Phase A — Ship the CLI ✅ (0.1.1)
 
 | Item | Status |
 |------|--------|
-| PyPI name `quest-ai`, CLI command `quest` | In progress |
-| `core/paths.py` — dev repo vs `~/.quest` | In progress |
-| Bundle `quest_data` (prompts + default topics) | In progress |
-| LangGraph in main dependencies | In progress |
-| README + TestPyPI dry run | Ready (see below) |
+| PyPI `quest-ai`, CLI `quest` | **0.1.1** |
+| `~/.quest` data dir + `.env` | Done |
+| Rich catalog picker + `--fresh` at `›` | Done |
+| Tutor history fix | Done |
+| Session UI polish | Done |
+| Docs: PRODUCT, CHANGELOG | Done |
 
-**Done recently:** replay/`--fresh`, topic generator, search-first picker, clearer Socratic scope, Rich CLI, reset, web UI (Vite).
+**Optional:** `QUEST_WIZARD=1` for questionary menus (catalog is default).
 
 ---
 
 ## Phase B — Paid-product core
 
-1. **Session report** — end-of-session summary: concepts touched, scores, gaps, suggested review.
-2. **`quest due`** — SM-2 spaced repetition: list concepts due today, start a micro-session.
-3. **Eval fixtures** — golden transcripts + expected scores; CI without live API for regressions on prompts.
+1. **Session report** — end-of-session summary: concepts touched, scores, gaps.
+2. **`quest due`** — SM-2: concepts due today.
+3. **Eval fixtures** — golden transcripts; CI without live API.
+4. **Dialogue modes** — explicit probe vs thread (evaluator context).
 
 ---
 
 ## Phase C — Distribution & polish
 
-1. **TestPyPI → PyPI** — `quest-ai` 0.1.0 with documented `ANTHROPIC_API_KEY`.
-2. **Docs site** — BRIEF + ROADMAP + “vs ChatGPT” positioning.
-3. **Frontend** — optional hosted UI; API already exists.
+1. Publish **0.1.1** to PyPI (maintainer: yuvrxj).
+2. Docs site or README polish.
+3. Frontend as optional face (API exists).
 
 ---
 
 ## Phase D — Later
 
-- **Voice** — thin STT/TTS on the existing turn loop (after report + due).
-- **Interview sprint** — timed multi-topic runs.
-- **Team / classroom** — shared topics, instructor dashboards.
+Voice, interview sprint, team/classroom.
 
 ---
 
-## Differentiators (positioning)
+## Differentiators
 
 | ChatGPT tutoring | Quest |
 |------------------|-------|
 | Explains on request | Tutor never explains |
 | Same model judges you | Separate Haiku evaluator |
 | Flat chat | Concept DAG + prerequisites |
-| No durable mastery | Mastery + SM-2 scheduling |
-| Ephemeral thread | Resumable LangGraph sessions |
-
----
-
-## TestPyPI (one-time setup + upload)
-
-```bash
-pip install -e ".[dev]"          # includes build + twine
-python -m build                    # writes dist/quest_ai-0.1.0.*
-```
-
-1. Create accounts: [pypi.org](https://pypi.org) and [test.pypi.org](https://test.pypi.org) (can be same email).
-2. Account → API tokens → create token scoped to **entire account** (or project once it exists).
-3. Upload to TestPyPI (use `__token__` as username, token as password):
-
-```bash
-twine upload --repository testpypi dist/*
-```
-
-4. Smoke-test install in a **fresh** venv:
-
-```bash
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ quest-ai
-export ANTHROPIC_API_KEY=sk-ant-...
-quest
-```
-
-When satisfied, `twine upload dist/*` for real PyPI (new token recommended).
+| No durable mastery | Mastery + SM-2 |
+| Ephemeral thread | Resumable sessions |
 
 ---
 
@@ -88,8 +61,22 @@ When satisfied, `twine upload dist/*` for real PyPI (new token recommended).
 ```bash
 pip install -e ".[dev]"
 pytest
-quest                          # or: python cli.py
+quest
 quest topic new "react hooks"
-quest closures_in_javascript --fresh
+quest tool_calling_agents --fresh
 QUEST_DATA_DIR=/tmp/q quest mastery
+```
+
+## Publish 0.1.1
+
+```bash
+python -m build
+twine upload dist/*
+```
+
+Use a **pypi.org** API token (`__token__` / `pypi-…`). Test install:
+
+```bash
+pip install -U quest-ai
+quest --help  # or: quest mastery
 ```

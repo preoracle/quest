@@ -93,3 +93,16 @@ def checkpoint_db_path() -> Path:
 def cli_history_path() -> Path:
     """Prompt-toolkit history file."""
     return user_data_dir() / "quest_cli_history"
+
+
+def env_file() -> Path:
+    """Per-user env file for API keys (``~/.quest/.env`` when installed)."""
+    return user_data_dir() / ".env"
+
+
+def load_quest_env() -> None:
+    """Load env vars from ``~/.quest/.env`` then cwd ``.env`` (dev)."""
+    from dotenv import load_dotenv
+
+    load_dotenv(env_file())
+    load_dotenv()

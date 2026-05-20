@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from core.topic_picker import _filter_topics, parse_new_command
+from core.picker_types import split_picker_input
+from core.topic_picker import _filter_topics, _resolve_topic, parse_new_command
 
 
 def test_filter_topics_by_display_name():
@@ -40,3 +41,23 @@ def test_parse_new_command_bare_new():
 
 def test_parse_new_command_not_new():
     assert parse_new_command("rag pipeline") is None
+
+
+def test_split_picker_input_strips_replay_flags():
+    query, replay = split_picker_input("binary_search --replay")
+    assert query == "binary_search"
+    assert replay is True
+
+
+def test_split_picker_input_fresh_alias():
+    query, replay = split_picker_input("3 --fresh")
+    assert query == "3"
+    assert replay is True
+
+
+def test_resolve_topic_with_flag():
+    topics = [("binary_search", "Binary Search")]
+    sel = _resolve_topic(topics, "binary_search --fresh")
+    assert sel is not None
+    assert sel.topic_id == "binary_search"
+    assert sel.replay is True
