@@ -7,38 +7,11 @@ import sys
 from dotenv import load_dotenv
 
 from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
+from core.topic_picker import create_topic_from_goal, pick_topic_interactive
 from core.topics import list_topics, load_topic
 from db import queries
 
 __all__ = ["EXIT_COMMANDS", "list_topics", "load_topic"]
-
-
-def pick_topic_interactive() -> str:
-    """Show numbered topic list, read user choice, return topic id."""
-    topics = list_topics()
-    if not topics:
-        print("No concept YAMLs found in concepts/. Add one and retry.")
-        raise SystemExit(1)
-
-    print("\nPick a topic:")
-    for idx, (_, display) in enumerate(topics, start=1):
-        print(f"  {idx}. {display}")
-    print()
-
-    while True:
-        raw = input("> ").strip()
-        if not raw:
-            continue
-        if raw in EXIT_COMMANDS:
-            raise SystemExit(0)
-        if raw.isdigit():
-            i = int(raw)
-            if 1 <= i <= len(topics):
-                return topics[i - 1][0]
-        for tid, _ in topics:
-            if raw == tid:
-                return tid
-        print(f"Pick a number 1–{len(topics)} or a topic id.")
 
 
 def print_mastery_table(user_id: str = DEFAULT_USER_ID, topic: str | None = None) -> None:
@@ -101,30 +74,82 @@ def reset_progress(
     return 0
 
 
+def cmd_topic_new(argv_tail: list[str]) -> int:
+    """Handle `cli.py topic new ...` — LLM-generated concept map."""
+    assume_yes = "--yes" in argv_tail or "-y" in argv_tail
+    force = "--force" in argv_tail
+    rest = [a for a in argv_tail if a not in ("--yes", "-y", "--force")]
+    if not rest:
+        try:
+            goal = input("What do you want to learn? ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+    else:
+        goal = " ".join(rest).strip()
+
+    tid = create_topic_from_goal(
+        goal,
+        assume_write=assume_yes,
+        force=force,
+    )
+    if not tid:
+        return 2 if not goal else 1
+
+    print(f"Start with:  python cli.py {tid}")
+    print(f"Replay DAG:  python cli.py {tid} --fresh")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     """CLI entry point."""
     load_dotenv()
     queries.init_db()
 
-    if len(argv) > 1 and argv[1] == "mastery":
-        topic_filter = argv[2] if len(argv) > 2 else None
+    raw = argv[1:]
+    fresh = "--fresh" in raw or "-f" in raw
+    args = [a for a in raw if a not in ("--fresh", "-f")]
+
+    if not args:
+        try:
+            topic_id = pick_topic_interactive()
+        except SystemExit as exc:  # pick_topic_interactive raises 1 on empty catalog
+            code = exc.code
+            return int(code) if isinstance(code, int) else 1
+        try:
+            with queries.get_connection() as conn:
+                run_session(conn, DEFAULT_USER_ID, topic_id, replay=fresh)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    if args[0] == "topic":
+        if len(args) >= 2 and args[1] == "new":
+            return cmd_topic_new(args[2:])
+        print(
+            "Usage: python cli.py topic new \"what you want to learn\"\n"
+            "       python cli.py topic new --yes \"...\"   # skip confirm\n"
+            "       python cli.py topic new --force \"...\" # overwrite YAML",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args[0] == "mastery":
+        topic_filter = args[1] if len(args) > 1 else None
         print_mastery_table(topic=topic_filter)
         return 0
 
-    if len(argv) > 1 and argv[1] == "reset":
-        assume_yes = "--yes" in argv[2:] or "-y" in argv[2:]
-        positional = [a for a in argv[2:] if not a.startswith("-")]
+    if args[0] == "reset":
+        assume_yes = "--yes" in args[1:] or "-y" in args[1:]
+        positional = [a for a in args[1:] if not a.startswith("-")]
         topic = positional[0] if positional else None
         return reset_progress(topic=topic, assume_yes=assume_yes)
 
-    if len(argv) > 1:
-        topic_id = argv[1]
-    else:
-        topic_id = pick_topic_interactive()
-
+    topic_id = args[0]
     try:
         with queries.get_connection() as conn:
-            run_session(conn, DEFAULT_USER_ID, topic_id)
+            run_session(conn, DEFAULT_USER_ID, topic_id, replay=fresh)
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
