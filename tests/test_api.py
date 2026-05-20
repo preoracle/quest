@@ -20,8 +20,8 @@ USER = "test_api_user"
 def client(tmp_db_path, monkeypatch):
     """TestClient with isolated quest.db and checkpoint store."""
     cp_path = tmp_db_path.with_name(tmp_db_path.stem + "_checkpoints.db")
-    monkeypatch.setattr(queries, "_DEFAULT_DB_PATH", tmp_db_path)
-    monkeypatch.setattr(queries, "_CHECKPOINT_DB_PATH", cp_path)
+    monkeypatch.setattr("core.paths.db_path", lambda: tmp_db_path)
+    monkeypatch.setattr("core.paths.checkpoint_db_path", lambda: cp_path)
     queries.init_db(tmp_db_path)
     with TestClient(app) as c:
         yield c

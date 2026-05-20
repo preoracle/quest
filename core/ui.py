@@ -24,9 +24,8 @@ from rich.text import Text
 
 from core.session_api import EvaluationView, SessionView
 from core.topics import load_topic
+from core.paths import cli_history_path
 from db import queries
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPTH_THRESHOLD = 4.0
 STICKY_ROWS = 3
 
@@ -398,7 +397,7 @@ def _make_prompt_session() -> PromptSession[str]:
         }
     )
     return PromptSession(
-        history=FileHistory(str(_REPO_ROOT / "quest_cli_history")),
+        history=FileHistory(str(cli_history_path())),
         key_bindings=bindings,
         style=style,
     )

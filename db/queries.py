@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+from core.paths import checkpoint_db_path as default_checkpoint_path
+from core.paths import db_path as default_db_path
+
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
-_DEFAULT_DB_PATH = _REPO_ROOT / "quest.db"
-_CHECKPOINT_DB_PATH = _REPO_ROOT / "quest_checkpoints.db"
 
 
 def _utc_now() -> str:
@@ -24,9 +24,9 @@ def _utc_now() -> str:
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     """Open a SQLite connection with row factory enabled.
 
-    Returns a connection to `db_path` or the default `quest.db` in the repo root.
+    Returns a connection to `db_path` or the default DB from `core.paths`.
     """
-    path = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    path = Path(db_path) if db_path else default_db_path()
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -38,7 +38,7 @@ def init_db(db_path: Path | str | None = None) -> Path:
 
     Returns the resolved database file path.
     """
-    path = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    path = Path(db_path) if db_path else default_db_path()
     schema = _SCHEMA_PATH.read_text(encoding="utf-8")
     with get_connection(path) as conn:
         conn.executescript(schema)
@@ -207,7 +207,7 @@ def record_turn(
 
 def get_checkpoint_db_path() -> Path:
     """Return the LangGraph SQLite checkpointer database path."""
-    return _CHECKPOINT_DB_PATH
+    return default_checkpoint_path()
 
 
 def reset_user_progress(
@@ -274,7 +274,7 @@ def delete_checkpoint_db() -> list[Path]:
     Returns the list of paths that were removed.
     """
     removed: list[Path] = []
-    base = _CHECKPOINT_DB_PATH
+    base = default_checkpoint_path()
     for path in (base, base.with_suffix(".db-shm"), base.with_suffix(".db-wal")):
         if path.exists():
             path.unlink()

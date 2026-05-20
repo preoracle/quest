@@ -49,7 +49,7 @@ def reset_progress(
     scope = f"topic '{topic}'" if topic else "ALL topics"
     print(f"\nThis will delete sessions, turns, mastery, and checkpoints for {scope}.")
     print(f"User: {user_id}")
-    print("Concept maps in concepts/*.yaml are NOT touched.\n")
+    print("Concept maps in quest_data/concepts/*.yaml are NOT touched.\n")
     if not assume_yes:
         answer = input("Type 'yes' to continue: ").strip().lower()
         if answer != "yes":
@@ -96,13 +96,15 @@ def cmd_topic_new(argv_tail: list[str]) -> int:
     if not tid:
         return 2 if not goal else 1
 
-    print(f"Start with:  python cli.py {tid}")
-    print(f"Replay DAG:  python cli.py {tid} --fresh")
+    print(f"Start with:  quest {tid}")
+    print(f"Replay DAG:  quest {tid} --fresh")
     return 0
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
+    if argv is None:
+        argv = sys.argv
     load_dotenv()
     queries.init_db()
 

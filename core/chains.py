@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -18,9 +17,7 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from core.models import EvaluatorOutput
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_PROMPTS_DIR = _REPO_ROOT / "prompts"
+from core.paths import prompts_dir
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_EVAL_MODEL = "claude-haiku-4-5"
@@ -32,11 +29,11 @@ def _load_prompt(name: str) -> str:
     Returns the raw template string. Raises FileNotFoundError if the
     prompt file is missing — prompts are not optional, they ARE the product.
     """
-    path = _PROMPTS_DIR / f"{name}.txt"
+    path = prompts_dir() / f"{name}.txt"
     if not path.exists():
         raise FileNotFoundError(
             f"Prompt file not found: {path}. "
-            f"Prompts must live in prompts/*.txt per BRIEF."
+            f"Prompts must live in quest_data/prompts/*.txt."
         )
     return path.read_text(encoding="utf-8")
 

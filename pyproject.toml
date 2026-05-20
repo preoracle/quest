@@ -1,12 +1,17 @@
 [project]
-name = "quest"
+name = "quest-ai"
 version = "0.1.0"
-description = "Quest — a Socratic AI tutor that never gives the answer, only asks the next better question."
+description = "Quest — Socratic AI tutor that never gives the answer, only asks the next better question."
 requires-python = ">=3.11"
-readme = "docs/BRIEF.md"
+readme = "README.md"
+license = "LicenseRef-Proprietary"
+authors = [{ name = "Syv Labs" }]
+keywords = ["socratic", "tutor", "education", "langgraph", "spaced-repetition"]
 dependencies = [
     "langchain>=0.3.0",
     "langchain-anthropic>=0.3.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
     "prompt-toolkit>=3.0.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
@@ -15,16 +20,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-phase2 = ["pytest>=8.0.0"]
-phase3 = ["langgraph>=0.2.0", "langgraph-checkpoint-sqlite>=2.0.0"]
-phase4 = ["fastapi>=0.115.0", "uvicorn>=0.30.0", "httpx>=0.27.0"]
+api = ["fastapi>=0.115.0", "uvicorn>=0.30.0", "httpx>=0.27.0"]
+dev = ["pytest>=8.0.0", "httpx>=0.27.0", "build>=1.0", "twine>=5.0"]
+
+[project.scripts]
+quest = "cli:main"
+
+[project.urls]
+Homepage = "https://github.com/syvlabs/quest"
+Documentation = "https://github.com/syvlabs/quest/blob/main/docs/BRIEF.md"
 
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["core", "db", "api"]
+packages = ["core", "db", "api", "quest_data"]
+py-modules = ["cli"]
+
+[tool.setuptools.package-data]
+quest_data = ["prompts/*.txt", "concepts/*.yaml"]
+db = ["schema.sql"]
 
 [tool.pytest.ini_options]
 markers = [

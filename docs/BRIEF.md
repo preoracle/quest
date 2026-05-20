@@ -51,12 +51,9 @@ quest/
 │   └── queries.py        # All DB operations (Phase 2)
 ├── api/
 │   └── routes.py         # FastAPI endpoints (Phase 4)
-├── prompts/
-│   ├── socratic.txt      # Socratic tutor system prompt
-│   ├── evaluator.txt     # Understanding evaluator prompt (Phase 2)
-│   └── topic_generator.txt # LLM concept-map generator (onboarding)
-├── concepts/
-│   └── <topic>.yaml      # Concept DAGs (hand-curated or LLM-generated)
+├── quest_data/
+│   ├── prompts/          # Socratic, evaluator, topic_generator templates
+│   └── concepts/         # Bundled concept DAGs (*.yaml)
 ├── frontend/             # React app (Phase 5)
 ├── tests/
 │   └── test_evaluator.py # Eval chain tests (Phase 2)
@@ -69,17 +66,20 @@ quest/
 Requires `ANTHROPIC_API_KEY` (Sonnet for tutor + generator, Haiku for evaluator).
 
 ```bash
-# Create a new topic from a learning goal (writes concepts/<slug>.yaml)
-python cli.py topic new "binary search for coding interviews"
-python cli.py topic new --yes "what is a RAG pipeline"    # skip confirm
-python cli.py topic new --force "..."                     # overwrite existing slug
+# Install: pip install quest-ai  →  command: quest
+# Dev: pip install -e ".[dev]"  →  python cli.py or quest
 
-# Study — search-first picker (type `new` to create a topic; scales past ~12 topics)
-python cli.py
-python cli.py rag_pipeline
+# Create a new topic (writes quest_data/concepts/<slug>.yaml in dev, ~/.quest/concepts when installed)
+quest topic new "binary search for coding interviews"
+quest topic new --yes "what is a RAG pipeline"    # skip confirm
+quest topic new --force "..."                     # overwrite existing slug
+
+# Study — search-first picker (type `new` to create a topic)
+quest
+quest rag_pipeline
 
 # Full DAG again this run (scheduling ignores stored mastery; mastery still updates)
-python cli.py rag_pipeline --fresh
+quest rag_pipeline --fresh
 
 python cli.py mastery
 python cli.py reset              # wipe progress (see help text)
