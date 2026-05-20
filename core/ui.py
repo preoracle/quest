@@ -209,10 +209,18 @@ class QuestCliUi:
             return
 
         if view.tutor_message:
+            body = Text()
+            if view.focus_scope:
+                body.append("What to figure out: ", style="dim")
+                body.append(f"{view.focus_scope}\n\n", style="dim italic")
+            body.append(view.tutor_message, style="bold")
+            title = "[yellow]tutor[/yellow]"
+            if view.focus:
+                title = f"[yellow]tutor[/yellow] · {view.focus}"
             self.console.print(
                 Panel(
-                    Text(view.tutor_message, style="bold"),
-                    title="[yellow]tutor[/yellow]",
+                    body,
+                    title=title,
                     title_align="left",
                     border_style="yellow",
                     box=box.MINIMAL,
@@ -286,6 +294,7 @@ class QuestCliUi:
         table.add_row("/mastery", "show mastery across all topics")
         table.add_row("/quit", "pause and resume later")
         table.add_row(":q", "same as /quit")
+        table.add_row("(cli)", "python cli.py TOPIC --fresh  — new run, full DAG replay")
         self.console.print(table)
         self.console.print()
 

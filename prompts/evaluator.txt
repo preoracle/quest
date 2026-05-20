@@ -7,11 +7,15 @@ Concepts in scope (JSON array — use only these ids for inference):
 
 # SCORING RUBRIC (1–5)
 
+Score the student's answer **against the tutor question that was asked**, not against the whole topic or concept description.
+
 1 — Missed the question entirely or is fundamentally confused
 2 — Partial grasp with a major misconception present
 3 — Roughly right idea but fuzzy on specifics or precision
 4 — Correct with minor imprecision
 5 — Precise and complete for what was asked
+
+Do NOT mark down solely because the student did not name an API or keyword from the concept description if the tutor question did not require naming it (e.g. they explained mount timing correctly but did not say "useEffect" when the question was about *when* to fetch).
 
 # CONCEPT INFERENCE
 

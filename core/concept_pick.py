@@ -93,3 +93,27 @@ def pick_next_concept(
         if all(mastery_scores.get(p, 0.0) >= MASTERY_THRESHOLD for p in prereqs):
             return by_id[cid]
     return None
+
+
+def pick_next_concept_replay(
+    concepts: list[dict],
+    topic_id: str,
+    completed: set[str],
+) -> dict | None:
+    """Pick the next concept for a replay session (ignores stored mastery).
+
+    Concepts whose ids appear in ``completed`` are skipped. Prerequisite
+    concepts must be completed before a dependent is eligible. Returns ``None``
+    when every concept has been completed this session.
+    """
+    ordered = topological_concept_ids(concepts, topic_id)
+    by_id = {c["id"]: c for c in concepts}
+    id_set = set(by_id.keys())
+    for cid in ordered:
+        if cid in completed:
+            continue
+        prereqs = _parse_prereqs(by_id[cid].get("prerequisites_json"), topic_id)
+        needed = [p for p in prereqs if p in id_set]
+        if all(p in completed for p in needed):
+            return by_id[cid]
+    return None

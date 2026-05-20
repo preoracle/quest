@@ -33,6 +33,7 @@ def create_session(body: StartSessionRequest) -> SessionView:
                 body.user_id,
                 body.topic,
                 resume=body.resume,
+                replay=body.replay,
             )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

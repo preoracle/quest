@@ -29,10 +29,11 @@ export function fetchTopics(): Promise<Topic[]> {
 export function startSession(
   topic: string,
   resume = true,
+  replay = false,
 ): Promise<SessionView> {
   return request<SessionView>("/sessions", {
     method: "POST",
-    body: JSON.stringify({ user_id: USER_ID, topic, resume }),
+    body: JSON.stringify({ user_id: USER_ID, topic, resume, replay }),
   });
 }
 

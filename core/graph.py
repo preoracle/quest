@@ -11,7 +11,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
 from core.chains import build_evaluator_chain, build_socratic_chain
-from core.concept_pick import pick_next_concept
+from core.concept_pick import pick_next_concept, pick_next_concept_replay
 from core.mastery import apply_evaluation_to_mastery
 from core.memory import summarize_session
 from core.messages import message_content, messages_from_dicts, messages_to_dicts
@@ -20,6 +20,31 @@ from db import queries
 
 CONCEPT_MASTERED_MIN_SCORE = 4
 CONCEPT_MASTERED_MIN_TURNS = 3
+
+_TASK_INSTRUCTION = (
+    "Ask ONE question. The student must understand the intellectual TASK "
+    "(compare two options, sequence events, predict an outcome, commit to one "
+    "choice, or state a decision rule) without you defining terms or naming "
+    "the answer API."
+)
+
+
+def _concept_scope_from_list(
+    concept_list: list[dict],
+    concept_id: str | None,
+) -> str:
+    """Short probe line from the concept YAML description (for tutor + UI)."""
+    if not concept_id:
+        return ""
+    for item in concept_list:
+        if item.get("id") == concept_id:
+            desc = (item.get("description") or "").strip()
+            if desc.lower().startswith("probes "):
+                desc = desc[7:].strip()
+            if len(desc) > 100:
+                return desc[:97] + "..."
+            return desc
+    return ""
 
 
 class QuestState(TypedDict, total=False):
@@ -31,6 +56,7 @@ class QuestState(TypedDict, total=False):
     concept_list: list[dict]
     current_concept_id: str | None
     current_concept_name: str | None
+    current_concept_scope: str | None
     concept_turn_count: int
     turn_idx: int
     last_tutor_question: str | None
@@ -42,6 +68,8 @@ class QuestState(TypedDict, total=False):
     advance_concept: bool
     last_score: int | None
     last_evaluation: dict | None
+    replay_mode: bool
+    completed_concept_ids: list[str]
 
 
 def build_checkpointer() -> SqliteSaver:
@@ -66,21 +94,28 @@ def build_quest_graph(
         topic_id = state["topic_id"]
         user_id = state["user_id"]
         concepts = queries.get_topic_concepts(conn, topic_id)
-        scores, reviews = queries.get_mastery_maps(conn, user_id, topic_id)
-        nxt = pick_next_concept(concepts, topic_id, scores, reviews)
+        if state.get("replay_mode"):
+            completed = set(state.get("completed_concept_ids") or [])
+            nxt = pick_next_concept_replay(concepts, topic_id, completed)
+        else:
+            scores, reviews = queries.get_mastery_maps(conn, user_id, topic_id)
+            nxt = pick_next_concept(concepts, topic_id, scores, reviews)
         if nxt is None:
             return {
                 "session_complete": True,
                 "current_concept_id": None,
                 "current_concept_name": None,
+                "current_concept_scope": None,
             }
         prev = state.get("current_concept_id")
         reset_turns = prev != nxt["id"]
+        scope = _concept_scope_from_list(state.get("concept_list") or [], nxt["id"])
         return {
             "session_complete": False,
             "advance_concept": False,
             "current_concept_id": nxt["id"],
             "current_concept_name": nxt["name"],
+            "current_concept_scope": scope,
             "concept_turn_count": 0 if reset_turns else state.get("concept_turn_count", 0),
         }
 
@@ -89,16 +124,22 @@ def build_quest_graph(
         topic_id = state["topic_id"]
         history = messages_from_dicts(state.get("history") or [])
         concept_name = state.get("current_concept_name") or "this topic"
+        scope = state.get("current_concept_scope") or ""
+        scope_note = ""
+        if scope:
+            scope_note = (
+                f"[Probe scope — shape your question; do not quote verbatim: {scope}]\n"
+            )
 
         if state.get("concept_turn_count", 0) == 0:
             prompt = (
-                f"Begin exploring the concept '{concept_name}'. "
-                "Ask one opening question about it."
+                f"{scope_note}{_TASK_INSTRUCTION}\n"
+                f"Opening question for concept '{concept_name}'."
             )
         else:
             prompt = (
-                f"Continue probing the concept '{concept_name}'. "
-                "Ask the next harder question."
+                f"{scope_note}{_TASK_INSTRUCTION}\n"
+                f"Next question for '{concept_name}'; build on the student's last answer."
             )
         history.append(HumanMessage(content=prompt))
 
@@ -168,7 +209,14 @@ def build_quest_graph(
         score = state.get("last_score") or 0
         turns = state.get("concept_turn_count", 0)
         if score >= CONCEPT_MASTERED_MIN_SCORE and turns >= CONCEPT_MASTERED_MIN_TURNS:
-            return {"advance_concept": True}
+            patch: dict = {"advance_concept": True}
+            if state.get("replay_mode"):
+                cid = state.get("current_concept_id")
+                prev = list(state.get("completed_concept_ids") or [])
+                if cid and cid not in prev:
+                    prev.append(cid)
+                patch["completed_concept_ids"] = prev
+            return patch
         return {"advance_concept": False}
 
     def summarize(state: QuestState) -> dict:
@@ -240,4 +288,6 @@ def seed_state_from_turns(
         "concept_turn_count": 0,
         "done": False,
         "session_complete": False,
+        "replay_mode": False,
+        "completed_concept_ids": [],
     }

@@ -15,6 +15,7 @@ from pathlib import Path
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
+from pydantic import BaseModel, Field
 
 from core.models import EvaluatorOutput
 
@@ -103,3 +104,32 @@ def build_evaluator_chain() -> Runnable:
         }
 
     return _prepare | prompt | model
+
+
+class GeneratedConcept(BaseModel):
+    """One node in an LLM-proposed concept DAG."""
+
+    id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+    description: str = ""
+    prerequisites: list[str] = Field(default_factory=list)
+
+
+class GeneratedTopicMap(BaseModel):
+    """Structured topic map from the topic generator (Sonnet)."""
+
+    topic: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    concepts: list[GeneratedConcept] = Field(..., min_length=5, max_length=10)
+
+
+def build_topic_generator_chain() -> Runnable:
+    """Return a Runnable: input ``{\"learning_goal\": str}``, output ``GeneratedTopicMap``."""
+    template = _load_prompt("topic_generator")
+    prompt = ChatPromptTemplate.from_messages([("human", template)])
+    model = ChatAnthropic(
+        model=os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
+        temperature=0.35,
+        max_tokens=4096,
+    ).with_structured_output(GeneratedTopicMap)
+    return prompt | model

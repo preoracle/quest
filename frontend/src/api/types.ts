@@ -19,6 +19,7 @@ export interface SessionView {
   done: boolean;
   waiting_for_answer: boolean;
   focus: string | null;
+  focus_scope: string | null;
   tutor_message: string | null;
   last_evaluation: Evaluation | null;
   summary: string | null;

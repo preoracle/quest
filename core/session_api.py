@@ -37,6 +37,7 @@ class SessionView(BaseModel):
     done: bool = False
     waiting_for_answer: bool = False
     focus: str | None = None
+    focus_scope: str | None = None
     tutor_message: str | None = None
     last_evaluation: EvaluationView | None = None
     summary: str | None = None
@@ -82,6 +83,7 @@ def _values_to_view(
         done=done,
         waiting_for_answer=waiting and not done,
         focus=values.get("current_concept_name"),
+        focus_scope=values.get("current_concept_scope"),
         tutor_message=tutor if waiting or done else None,
         last_evaluation=evaluation,
         summary=summary,
@@ -128,11 +130,16 @@ def start_session(
     topic_id: str,
     *,
     resume: bool = True,
+    replay: bool = False,
 ) -> SessionView:
     """Create or resume a session and return the first pending question.
 
     Runs the graph until it interrupts at `wait_for_user` or completes.
     When `resume` is True, reuses an open session for (user_id, topic_id).
+
+    When ``replay`` is True, starts a **new** session that walks the concept DAG
+    from scratch for this run (scheduling ignores stored mastery). DB mastery
+    still updates. Implies ``resume`` does not reuse an open session.
     """
     topic_data = load_topic(topic_id)
     display = topic_data.get("display_name") or topic_id
@@ -140,7 +147,8 @@ def start_session(
     queries.get_or_create_user(conn, user_id)
     concept_list = queries.upsert_topic_concepts(conn, topic_data)
 
-    open_id = queries.get_open_session(conn, user_id, topic_id) if resume else None
+    want_resume = resume and not replay
+    open_id = queries.get_open_session(conn, user_id, topic_id) if want_resume else None
     if open_id:
         session_id = open_id
         resuming = True
@@ -171,6 +179,8 @@ def start_session(
                     "concept_turn_count": 0,
                     "done": False,
                     "session_complete": False,
+                    "replay_mode": replay,
+                    "completed_concept_ids": [],
                 },
                 config,
             )

@@ -53,15 +53,40 @@ quest/
 │   └── routes.py         # FastAPI endpoints (Phase 4)
 ├── prompts/
 │   ├── socratic.txt      # Socratic tutor system prompt
-│   └── evaluator.txt     # Understanding evaluator prompt (Phase 2)
+│   ├── evaluator.txt     # Understanding evaluator prompt (Phase 2)
+│   └── topic_generator.txt # LLM concept-map generator (onboarding)
 ├── concepts/
-│   └── <topic>.yaml      # Hand-curated concept dependency maps
+│   └── <topic>.yaml      # Concept DAGs (hand-curated or LLM-generated)
 ├── frontend/             # React app (Phase 5)
 ├── tests/
 │   └── test_evaluator.py # Eval chain tests (Phase 2)
 ├── BRIEF.md              # This file
 ├── PHASES.md             # Build phases
 └── main.py               # Entry point
+
+## CLI — onboarding, replay, reset
+
+Requires `ANTHROPIC_API_KEY` (Sonnet for tutor + generator, Haiku for evaluator).
+
+```bash
+# Create a new topic from a learning goal (writes concepts/<slug>.yaml)
+python cli.py topic new "binary search for coding interviews"
+python cli.py topic new --yes "what is a RAG pipeline"    # skip confirm
+python cli.py topic new --force "..."                     # overwrite existing slug
+
+# Study — search-first picker (type `new` to create a topic; scales past ~12 topics)
+python cli.py
+python cli.py rag_pipeline
+
+# Full DAG again this run (scheduling ignores stored mastery; mastery still updates)
+python cli.py rag_pipeline --fresh
+
+python cli.py mastery
+python cli.py reset              # wipe progress (see help text)
+python cli.py reset TOPIC --yes
+```
+
+REST: `POST /sessions` accepts `"replay": true` with the same semantics.
 
 ## What Cursor should know
 - Never scaffold a phase without asking which phase we're on

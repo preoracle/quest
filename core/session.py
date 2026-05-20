@@ -17,17 +17,30 @@ def run_session(
     conn: sqlite3.Connection,
     user_id: str,
     topic_id: str,
+    *,
+    replay: bool = False,
 ) -> None:
-    """Run or resume a Socratic session until the user pauses or the DAG completes."""
+    """Run or resume a Socratic session until the user pauses or the DAG completes.
+
+    ``replay=True`` starts a **new** session that walks the full concept DAG again
+    for this run (scheduling ignores stored mastery). Still updates mastery in DB.
+    """
     ui = QuestCliUi()
-    open_id = queries.get_open_session(conn, user_id, topic_id)
-    view = start_session(conn, user_id, topic_id, resume=True)
+    want_resume = not replay
+    open_id = (
+        queries.get_open_session(conn, user_id, topic_id) if want_resume else None
+    )
+    view = start_session(
+        conn, user_id, topic_id, resume=True, replay=replay,
+    )
 
     progress = ui.build_progress(conn, user_id, view)
     ui.sticky.enable(ui.build_header_lines(view, progress))
 
     try:
-        ui.render_session_start(view, resuming=bool(open_id))
+        ui.render_session_start(
+            view, resuming=bool(open_id) and not replay,
+        )
         ui.render_turn(view, progress)
 
         if view.done:

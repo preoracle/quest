@@ -16,6 +16,13 @@ class StartSessionRequest(BaseModel):
         default=True,
         description="Reuse open session for this user+topic if one exists",
     )
+    replay: bool = Field(
+        default=False,
+        description=(
+            "Start a new session that walks the concept DAG from scratch for this run "
+            "(scheduling ignores stored mastery; mastery still updates)"
+        ),
+    )
 
 
 class SubmitTurnRequest(BaseModel):
