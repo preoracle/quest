@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ContentTrack } from "@/components/ContentColumn";
 import { gutterPx, pagePy } from "@/lib/layout";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ export function SessionScaffold({
   className,
   turnsAnswered,
   scrollTrigger,
+  streak,
 }: {
   pinnedQuestion?: ReactNode;
   scroll: ReactNode;
@@ -24,6 +26,7 @@ export function SessionScaffold({
   turnsAnswered?: number;
   /** Change this value to scroll history to bottom (e.g. pass turnSeed). */
   scrollTrigger?: string | number;
+  streak?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -48,12 +51,28 @@ export function SessionScaffold({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}>
+      {/* Progress bar + streak pill */}
       {pct !== undefined && (
-        <div className="h-[2px] w-full shrink-0 bg-surface-muted">
-          <div
-            className="h-full rounded-full bg-accent/50 transition-all duration-700 ease-out"
-            style={{ width: `${pct}%` }}
-          />
+        <div className="relative shrink-0">
+          <div className="h-[2px] w-full bg-surface-muted">
+            <div
+              className="h-full rounded-full bg-accent/50 transition-all duration-700 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <AnimatePresence>
+            {streak !== undefined && streak >= 2 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.75, x: 6 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                exit={{ opacity: 0, scale: 0.75 }}
+                transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                className="absolute right-4 top-1 flex items-center gap-1 rounded-full border border-accent/25 bg-accent-dim/60 px-2 py-0.5 text-[10px] font-semibold text-accent shadow-sm"
+              >
+                🔥 {streak}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -67,15 +86,15 @@ export function SessionScaffold({
         </ContentTrack>
       </div>
 
-      {/* Bottom zone: current question + answer bar share one border-top */}
+      {/* Bottom zone: question prompt above, answer composer below */}
       {(pinnedQuestion || pinnedBottom) && (
-        <div className="shrink-0 border-t border-line/30 bg-void/85 backdrop-blur-xl">
+        <div className="shrink-0 border-t border-line/40 bg-void/90 backdrop-blur-xl">
           {pinnedQuestion && (
-            <div className={cn("py-3", gutterPx)}>
+            <div className={cn("border-b border-line/20 pb-3.5 pt-3.5", gutterPx)}>
               <ContentTrack tier="reading">{pinnedQuestion}</ContentTrack>
             </div>
           )}
-          {pinnedBottom && <div>{pinnedBottom}</div>}
+          {pinnedBottom && pinnedBottom}
         </div>
       )}
     </div>
