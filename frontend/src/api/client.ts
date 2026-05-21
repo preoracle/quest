@@ -13,7 +13,17 @@ import type {
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
-const USER_ID = "default";
+
+let _userId = "default";
+
+/** Called once by ClerkUserSync when the authenticated user is known. */
+export function setUserId(id: string) {
+  _userId = id;
+}
+
+export function getUserId() {
+  return _userId;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -36,17 +46,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function fetchTopics(): Promise<TopicCatalogItem[]> {
-  return request<TopicCatalogResponse>("/topics").then((r) => r.topics);
+export function patchTopic(
+  topicId: string,
+  body: {
+    display_name?: string;
+    archived?: boolean;
+    pinned?: boolean;
+    new_topic_id?: string;
+  },
+): Promise<{ topic_id: string; display_name?: string; previous_id?: string }> {
+  return request(`/topics/${encodeURIComponent(topicId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteTopic(topicId: string): Promise<void> {
+  return request(`/topics/${encodeURIComponent(topicId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchTopics(options?: {
+  q?: string;
+  includeArchived?: boolean;
+}): Promise<TopicCatalogItem[]> {
+  const params = new URLSearchParams();
+  params.set("user_id", _userId);
+  if (options?.q?.trim()) params.set("q", options.q.trim());
+  if (options?.includeArchived) params.set("include_archived", "true");
+  return request<TopicCatalogResponse>(`/topics?${params.toString()}`).then(
+    (r) => r.topics,
+  );
 }
 
 export function fetchProgressSummary(): Promise<TopicSummaryResponse> {
-  return request<TopicSummaryResponse>(`/users/${USER_ID}/progress/summary`);
+  return request<TopicSummaryResponse>(`/users/${_userId}/progress/summary`);
 }
 
 export function fetchTopicGraph(topicId: string): Promise<TopicGraph> {
   return request<TopicGraph>(
-    `/topics/${encodeURIComponent(topicId)}/graph?user_id=${USER_ID}`,
+    `/topics/${encodeURIComponent(topicId)}/graph?user_id=${_userId}`,
   );
 }
 
@@ -70,7 +110,7 @@ export function importTopicYaml(
 export function startBaseline(topic: string): Promise<BaselineView> {
   return request<BaselineView>("/baseline", {
     method: "POST",
-    body: JSON.stringify({ user_id: USER_ID, topic }),
+    body: JSON.stringify({ user_id: _userId, topic }),
   });
 }
 
@@ -91,7 +131,7 @@ export function startSession(
   return request<SessionView>("/sessions", {
     method: "POST",
     body: JSON.stringify({
-      user_id: USER_ID,
+      user_id: _userId,
       topic,
       resume: mode === "resume",
       replay: mode === "replay",
@@ -119,12 +159,10 @@ export function fetchSessionTurns(sessionId: string): Promise<TurnItem[]> {
 
 export function fetchMastery(topic?: string): Promise<MasteryResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
-  return request<MasteryResponse>(`/users/${USER_ID}/mastery${q}`);
+  return request<MasteryResponse>(`/users/${_userId}/mastery${q}`);
 }
 
 export function fetchDue(topic?: string): Promise<DueResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
-  return request<DueResponse>(`/users/${USER_ID}/due${q}`);
+  return request<DueResponse>(`/users/${_userId}/due${q}`);
 }
-
-export { USER_ID };
