@@ -33,6 +33,10 @@ List 0–3 short, specific gaps (strings). Empty list if none. No full sentences
 
 Respond only via the structured tool. No preamble.
 
+# SCORING SCOPE
+
+{scoring_scope}
+
 ---
 
 Tutor question:

@@ -1,13 +1,13 @@
 [project]
 name = "quest-ai"
-version = "0.1.1"
+version = "0.3.0"
 description = "Quest — Socratic AI tutor that never gives the answer, only asks the next better question."
 requires-python = ">=3.11"
 readme = "README.md"
-license = "LicenseRef-Proprietary"
 authors = [{ name = "yuvrxj" }]
 keywords = ["socratic", "tutor", "education", "langgraph", "spaced-repetition"]
 classifiers = [
+    "License :: Other/Proprietary License",
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Education",
@@ -39,7 +39,9 @@ quest = "cli:main"
 
 [project.urls]
 Homepage = "https://github.com/preoracle/quest"
-Documentation = "https://github.com/preoracle/quest/blob/main/docs/PRODUCT.md"
+Documentation = "https://github.com/preoracle/quest#readme"
+Repository = "https://github.com/preoracle/quest"
+Issues = "https://github.com/preoracle/quest/issues"
 Changelog = "https://github.com/preoracle/quest/blob/main/docs/CHANGELOG.md"
 
 [build-system]

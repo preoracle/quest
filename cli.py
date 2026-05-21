@@ -7,11 +7,68 @@ import sys
 
 from core.paths import env_file, load_quest_env
 from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
+from core.version import __version__
 from core.topic_picker import create_topic_from_goal, pick_topic_interactive
 from core.topics import list_topics, load_topic
 from db import queries
 
 __all__ = ["EXIT_COMMANDS", "list_topics", "load_topic"]
+
+
+def print_due_table(
+    user_id: str = DEFAULT_USER_ID,
+    topic: str | None = None,
+    *,
+    as_json: bool = False,
+) -> None:
+    """Print concepts due for SM-2 review."""
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    queries.init_db()
+    with queries.get_connection() as conn:
+        rows = queries.get_due_concepts(conn, user_id, topic=topic)
+
+    if as_json:
+        payload = [
+            {
+                "topic": r.topic,
+                "concept_id": r.concept_id,
+                "name": r.name,
+                "score_1_to_5": round(r.score_1_to_5, 1),
+                "next_review_at": r.next_review_at,
+                "overdue": r.overdue,
+            }
+            for r in rows
+        ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if not rows:
+        label = f" for topic '{topic}'" if topic else ""
+        print(f"Nothing due{label}. Run a session or check back after reviews schedule.")
+        return
+
+    console = Console()
+    table = Table(title=f"Due today — {user_id}", show_header=True, header_style="bold")
+    table.add_column("Topic", style="dim")
+    table.add_column("Concept")
+    table.add_column("Mastery", justify="right")
+    table.add_column("Due", style="dim")
+    for r in rows:
+        due_label = "now" if not r.next_review_at else r.next_review_at[:10]
+        if r.overdue:
+            due_label = f"[red]{due_label}[/red]"
+        table.add_row(
+            r.topic,
+            r.name,
+            f"{r.score_1_to_5:.1f}/5",
+            due_label,
+        )
+    console.print(table)
+    console.print()
 
 
 def print_mastery_table(user_id: str = DEFAULT_USER_ID, topic: str | None = None) -> None:
@@ -123,11 +180,17 @@ def main(argv: list[str] | None = None) -> int:
     load_quest_env()
     queries.init_db()
 
-    from core.picker_types import REPLAY_FLAGS
+    from core.picker_types import BASELINE_FLAGS, REPLAY_FLAGS
 
     raw = argv[1:]
+    if raw and raw[0] in ("--version", "-V"):
+        print(f"quest-ai {__version__}")
+        return 0
+
     fresh = any(flag in raw for flag in REPLAY_FLAGS)
-    args = [a for a in raw if a not in REPLAY_FLAGS]
+    baseline = any(flag in raw for flag in BASELINE_FLAGS)
+    skip_flags = REPLAY_FLAGS | BASELINE_FLAGS
+    args = [a for a in raw if a not in skip_flags]
 
     if not args:
         try:
@@ -144,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                     DEFAULT_USER_ID,
                     selection.topic_id,
                     replay=fresh or selection.replay,
+                    baseline=baseline or selection.baseline,
                 )
         except FileNotFoundError as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -166,6 +230,12 @@ def main(argv: list[str] | None = None) -> int:
         print_mastery_table(topic=topic_filter)
         return 0
 
+    if args[0] == "due":
+        topic_filter = args[1] if len(args) > 1 and not args[1].startswith("-") else None
+        as_json = "--json" in args[1:]
+        print_due_table(topic=topic_filter, as_json=as_json)
+        return 0
+
     if args[0] == "reset":
         assume_yes = "--yes" in args[1:] or "-y" in args[1:]
         positional = [a for a in args[1:] if not a.startswith("-")]
@@ -177,7 +247,13 @@ def main(argv: list[str] | None = None) -> int:
         return code
     try:
         with queries.get_connection() as conn:
-            run_session(conn, DEFAULT_USER_ID, topic_id, replay=fresh)
+            run_session(
+                conn,
+                DEFAULT_USER_ID,
+                topic_id,
+                replay=fresh,
+                baseline=baseline,
+            )
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
