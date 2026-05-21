@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   topic TEXT NOT NULL,
   started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ended_at TIMESTAMP,
-  summary_text TEXT
+  summary_text TEXT,
+  report_json TEXT,
+  session_kind TEXT NOT NULL DEFAULT 'study' CHECK (session_kind IN ('study', 'baseline'))
 );
 
 CREATE TABLE IF NOT EXISTS turns (

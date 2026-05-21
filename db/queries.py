@@ -33,6 +33,20 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Apply additive schema changes for existing databases."""
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+    }
+    if "report_json" not in cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN report_json TEXT")
+    if "session_kind" not in cols:
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'study'"
+        )
+
+
 def init_db(db_path: Path | str | None = None) -> Path:
     """Create tables from schema.sql if they do not exist.
 
@@ -42,6 +56,7 @@ def init_db(db_path: Path | str | None = None) -> Path:
     schema = _SCHEMA_PATH.read_text(encoding="utf-8")
     with get_connection(path) as conn:
         conn.executescript(schema)
+        _migrate_schema(conn)
         conn.commit()
     return path
 
@@ -130,15 +145,19 @@ def create_session(
     user_id: str,
     topic: str,
     session_id: str | None = None,
+    *,
+    session_kind: str = "study",
 ) -> str:
     """Insert a new session row and return its id."""
+    if session_kind not in ("study", "baseline"):
+        raise ValueError(f"Invalid session_kind: {session_kind}")
     sid = session_id or str(uuid.uuid4())
     conn.execute(
         """
-        INSERT INTO sessions (id, user_id, topic, started_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO sessions (id, user_id, topic, started_at, session_kind)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (sid, user_id, topic, _utc_now()),
+        (sid, user_id, topic, _utc_now(), session_kind),
     )
     conn.commit()
     return sid
@@ -157,7 +176,8 @@ def get_session(conn: sqlite3.Connection, session_id: str) -> dict | None:
     """Return a session row as a dict, or None if missing."""
     row = conn.execute(
         """
-        SELECT id, user_id, topic, started_at, ended_at, summary_text
+        SELECT id, user_id, topic, started_at, ended_at, summary_text, report_json,
+               session_kind
         FROM sessions WHERE id = ?
         """,
         (session_id,),
@@ -286,18 +306,60 @@ def get_open_session(
     conn: sqlite3.Connection,
     user_id: str,
     topic: str,
+    *,
+    session_kind: str = "study",
 ) -> str | None:
-    """Return the id of an in-progress session (ended_at IS NULL), if any."""
+    """Return the id of an in-progress session (ended_at IS NULL), if any.
+
+    Defaults to ``study`` only — baseline sessions use a separate flow and must
+    not be resumed as Socratic study (they have no LangGraph checkpoint).
+    """
     row = conn.execute(
         """
         SELECT id FROM sessions
         WHERE user_id = ? AND topic = ? AND ended_at IS NULL
+          AND session_kind = ?
         ORDER BY started_at DESC
         LIMIT 1
         """,
-        (user_id, topic),
+        (user_id, topic, session_kind),
     ).fetchone()
     return row["id"] if row else None
+
+
+def close_open_study_sessions(
+    conn: sqlite3.Connection,
+    user_id: str,
+    topic: str,
+) -> int:
+    """End all open study sessions for a user+topic. Returns rows updated."""
+    cur = conn.execute(
+        """
+        UPDATE sessions SET ended_at = ?
+        WHERE user_id = ? AND topic = ? AND ended_at IS NULL
+          AND session_kind = 'study'
+        """,
+        (_utc_now(), user_id, topic),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def get_topic_last_study_at(
+    conn: sqlite3.Connection,
+    user_id: str,
+) -> dict[str, str]:
+    """Most recent study session start time per topic (ISO timestamps)."""
+    rows = conn.execute(
+        """
+        SELECT topic, MAX(started_at) AS last_at
+        FROM sessions
+        WHERE user_id = ? AND session_kind = 'study'
+        GROUP BY topic
+        """,
+        (user_id,),
+    ).fetchall()
+    return {row["topic"]: row["last_at"] for row in rows}
 
 
 def get_topic_concepts(conn: sqlite3.Connection, topic_id: str) -> list[dict]:
@@ -312,6 +374,24 @@ def get_topic_concepts(conn: sqlite3.Connection, topic_id: str) -> list[dict]:
         (topic_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def topic_has_concept_mastery(
+    conn: sqlite3.Connection,
+    user_id: str,
+    topic_id: str,
+) -> bool:
+    """True if the user has any concept-level mastery rows for this topic."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM mastery m
+        JOIN concepts c ON c.id = m.concept_id
+        WHERE m.user_id = ? AND c.topic = ? AND c.kind = 'concept'
+        LIMIT 1
+        """,
+        (user_id, topic_id),
+    ).fetchone()
+    return row is not None
 
 
 def get_mastery_maps(
@@ -351,6 +431,24 @@ def get_turns_for_session(
     return [dict(r) for r in rows]
 
 
+def get_session_turns_detailed(
+    conn: sqlite3.Connection,
+    session_id: str,
+) -> list[dict]:
+    """Return turns with evaluator fields for session reports."""
+    rows = conn.execute(
+        """
+        SELECT turn_idx, role, content, evaluator_score, evaluator_gaps_json,
+               evaluator_concept_id, evaluator_reasoning
+        FROM turns
+        WHERE session_id = ?
+        ORDER BY turn_idx
+        """,
+        (session_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def set_session_summary(
     conn: sqlite3.Connection,
     session_id: str,
@@ -362,6 +460,78 @@ def set_session_summary(
         (summary_text, session_id),
     )
     conn.commit()
+
+
+def set_session_report(
+    conn: sqlite3.Connection,
+    session_id: str,
+    report_json: str,
+) -> None:
+    """Write structured session report JSON."""
+    conn.execute(
+        "UPDATE sessions SET report_json = ? WHERE id = ?",
+        (report_json, session_id),
+    )
+    conn.commit()
+
+
+@dataclass
+class DueConceptRow:
+    """One concept due for SM-2 review."""
+
+    topic: str
+    concept_id: str
+    name: str
+    score_1_to_5: float
+    next_review_at: str | None
+    overdue: bool
+
+
+def get_due_concepts(
+    conn: sqlite3.Connection,
+    user_id: str,
+    *,
+    topic: str | None = None,
+    as_of: datetime | None = None,
+) -> list[DueConceptRow]:
+    """Return concepts due for review (never scheduled or next_review_at <= as_of)."""
+    from core.concept_pick import is_due
+
+    now = as_of or datetime.now(timezone.utc)
+    params: list[Any] = [user_id]
+    topic_clause = ""
+    if topic:
+        topic_clause = " AND c.topic = ?"
+        params.append(topic)
+
+    rows = conn.execute(
+        f"""
+        SELECT c.topic, c.id, c.name, m.score, m.next_review_at
+        FROM mastery m
+        JOIN concepts c ON c.id = m.concept_id
+        WHERE m.user_id = ? AND c.kind = 'concept'{topic_clause}
+        ORDER BY c.topic, m.next_review_at IS NULL DESC, m.next_review_at ASC
+        """,
+        params,
+    ).fetchall()
+
+    out: list[DueConceptRow] = []
+    for r in rows:
+        nra = r["next_review_at"]
+        if not is_due(nra, now):
+            continue
+        overdue = bool(nra)
+        out.append(
+            DueConceptRow(
+                topic=r["topic"],
+                concept_id=r["id"],
+                name=r["name"],
+                score_1_to_5=float(r["score"]) * 5.0,
+                next_review_at=nra,
+                overdue=overdue and nra is not None,
+            )
+        )
+    return out
 
 
 def get_recent_summaries(
