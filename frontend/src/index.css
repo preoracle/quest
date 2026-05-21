@@ -22,7 +22,18 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --width-reading: 42rem;
+  --width-catalog: 60rem;
+  --width-wide: 88rem;
+  --width-shell: 87.5rem;
   --width-rail: 15.5rem;
+
+  --spacing-tight: 0.5rem;
+  --spacing-default: 1rem;
+  --spacing-section: 1.5rem;
+  --spacing-page: 2rem;
+  --spacing-list: 0.5rem;
+  --min-height-create-slot: 9rem;
+  --min-height-toolbar: 4.5rem;
 }
 
 @layer base {
@@ -34,8 +45,25 @@
     scroll-behavior: smooth;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
-    @apply min-h-screen bg-void text-on-surface;
+    @apply bg-void text-on-surface;
+  }
+
+  /* App chrome (Topics, Session, …) — not the marketing home page */
+  body[data-app-shell="true"] {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body[data-app-shell="true"] #root {
+    height: 100%;
+    overflow: hidden;
   }
 
   ::selection {
@@ -68,9 +96,10 @@
   .mesh-bg {
     background-color: var(--color-void);
     background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(212 168 83 / 0.14), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(140 160 255 / 0.06), transparent),
-      radial-gradient(ellipse 50% 30% at 0% 100%, rgb(212 168 83 / 0.05), transparent);
+      radial-gradient(ellipse 90% 55% at 50% -15%, rgb(212 168 83 / 0.22), transparent),
+      radial-gradient(ellipse 65% 45% at 100% 5%, rgb(140 160 255 / 0.11), transparent),
+      radial-gradient(ellipse 55% 35% at 0% 95%, rgb(212 168 83 / 0.09), transparent),
+      radial-gradient(ellipse 40% 30% at 80% 60%, rgb(100 120 220 / 0.05), transparent);
   }
 
   .noise-overlay::after {
@@ -85,38 +114,104 @@
   }
 
   .card {
-    @apply rounded-xl border border-line/80 bg-surface-elevated/80 shadow-[0_4px_24px_rgb(0_0_0/0.35)] backdrop-blur-sm;
+    @apply rounded-xl border border-line/60 bg-surface-elevated/75 shadow-[0_4px_24px_rgb(0_0_0/0.35),0_1px_0_rgb(255_255_255/0.04)_inset] backdrop-blur-md;
   }
 
   .card-hover {
-    @apply transition-[border-color,transform,box-shadow] duration-300 hover:border-accent/30 hover:shadow-[0_8px_32px_rgb(0_0_0/0.45)] hover:-translate-y-0.5;
+    @apply transition-[border-color,transform,box-shadow] duration-300 hover:border-accent/30 hover:shadow-[0_8px_36px_rgb(0_0_0/0.5),0_1px_0_rgb(255_255_255/0.05)_inset] hover:-translate-y-0.5;
+  }
+
+  .glass-panel {
+    background: linear-gradient(
+      135deg,
+      rgb(24 24 36 / 0.7) 0%,
+      rgb(16 16 26 / 0.6) 100%
+    );
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid rgb(42 42 60 / 0.5);
+    box-shadow:
+      0 8px 32px rgb(0 0 0 / 0.4),
+      0 1px 0 rgb(255 255 255 / 0.05) inset;
+  }
+
+  .header-glass {
+    background: linear-gradient(
+      to bottom,
+      rgb(16 16 24 / 0.82) 0%,
+      rgb(10 10 18 / 0.72) 100%
+    );
+    backdrop-filter: blur(48px) saturate(1.8) brightness(1.04);
+    -webkit-backdrop-filter: blur(48px) saturate(1.8) brightness(1.04);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.05),
+      0 1px 0 rgb(42 42 60 / 0.5) inset,
+      0 16px 48px rgb(0 0 0 / 0.25),
+      0 0 0 1px rgb(212 168 83 / 0.04) inset;
+  }
+
+  .app-header-floating {
+    border: 1px solid rgb(212 168 83 / 0.18);
+    border-radius: 1rem;
+    background:
+      linear-gradient(
+        135deg,
+        rgb(212 168 83 / 0.12) 0%,
+        rgb(140 160 255 / 0.05) 45%,
+        rgb(17 17 24 / 0.75) 100%
+      );
+    backdrop-filter: blur(20px) saturate(1.2);
+    box-shadow:
+      0 4px 24px rgb(0 0 0 / 0.35),
+      0 1px 0 rgb(212 168 83 / 0.15) inset,
+      0 0 40px rgb(212 168 83 / 0.04);
   }
 
   .question-card {
-    @apply relative overflow-hidden rounded-xl border border-line/80 p-8 shadow-[0_4px_24px_rgb(0_0_0/0.35)] backdrop-blur-sm md:p-10;
-    background: linear-gradient(
-      145deg,
-      rgb(24 24 31 / 0.95) 0%,
-      rgb(17 17 24 / 0.98) 100%
-    );
-  }
-
-  .question-card::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgb(212 168 83 / 0.5),
-      transparent
-    );
+    @apply rounded-2xl border border-line/50 bg-surface/35 px-5 py-5 backdrop-blur-sm;
   }
 
   .skeleton {
     @apply animate-pulse rounded-lg bg-surface-muted;
+  }
+
+  .px-gutter-app {
+    @apply px-5 lg:px-8;
+  }
+
+  .py-page {
+    padding-block: var(--spacing-page);
+  }
+
+  .py-section {
+    padding-block: var(--spacing-section);
+  }
+
+  .gap-section {
+    gap: var(--spacing-section);
+  }
+
+  .gap-list {
+    gap: var(--spacing-list);
+  }
+
+  .section-label {
+    @apply mb-2 flex items-baseline gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-accent/85;
+  }
+
+  .min-h-create-slot {
+    min-height: var(--min-height-create-slot);
+  }
+
+  .max-w-catalog {
+    max-width: var(--width-catalog);
+  }
+
+  .max-w-wide {
+    max-width: var(--width-wide);
+  }
+
+  .max-w-shell {
+    max-width: var(--width-shell);
   }
 }
