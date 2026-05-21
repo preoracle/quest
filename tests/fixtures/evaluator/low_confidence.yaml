@@ -1,0 +1,11 @@
+name: low_confidence
+evaluation:
+  score: 4
+  gaps: []
+  reasoning: Good but vague topic.
+  inferred_concept_id: closures_in_javascript:closure
+  inferred_concept_confidence: 0.2
+expected:
+  score_min: 4
+  score_max: 5
+  updates_mastery: false

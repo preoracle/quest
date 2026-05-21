@@ -1,0 +1,12 @@
+name: weak_answer
+evaluation:
+  score: 2
+  gaps:
+    - Confuses scope with closure
+  reasoning: Major misconception.
+  inferred_concept_id: closures_in_javascript:closure
+  inferred_concept_confidence: 0.75
+expected:
+  score_min: 1
+  score_max: 2
+  updates_mastery: true

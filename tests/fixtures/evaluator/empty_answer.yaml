@@ -1,0 +1,12 @@
+name: empty_answer
+evaluation:
+  score: 1
+  gaps:
+    - No substantive response
+  reasoning: Empty or non-answer.
+  inferred_concept_id: null
+  inferred_concept_confidence: 0.0
+expected:
+  score_min: 1
+  score_max: 1
+  updates_mastery: false

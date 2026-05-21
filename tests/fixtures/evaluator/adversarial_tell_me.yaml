@@ -1,0 +1,12 @@
+name: adversarial_tell_me
+evaluation:
+  score: 1
+  gaps:
+    - Asked for direct answer instead of reasoning
+  reasoning: Did not engage with the question.
+  inferred_concept_id: null
+  inferred_concept_confidence: 0.1
+expected:
+  score_min: 1
+  score_max: 2
+  updates_mastery: false

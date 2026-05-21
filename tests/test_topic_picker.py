@@ -44,15 +44,24 @@ def test_parse_new_command_not_new():
 
 
 def test_split_picker_input_strips_replay_flags():
-    query, replay = split_picker_input("binary_search --replay")
+    query, replay, baseline = split_picker_input("binary_search --replay")
     assert query == "binary_search"
     assert replay is True
+    assert baseline is False
 
 
 def test_split_picker_input_fresh_alias():
-    query, replay = split_picker_input("3 --fresh")
+    query, replay, baseline = split_picker_input("3 --fresh")
     assert query == "3"
     assert replay is True
+    assert baseline is False
+
+
+def test_split_picker_input_baseline_flag():
+    query, replay, baseline = split_picker_input("rag_pipeline --baseline")
+    assert query == "rag_pipeline"
+    assert replay is False
+    assert baseline is True
 
 
 def test_resolve_topic_with_flag():

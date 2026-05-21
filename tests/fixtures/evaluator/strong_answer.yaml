@@ -1,0 +1,11 @@
+name: strong_answer
+evaluation:
+  score: 5
+  gaps: []
+  reasoning: Complete and precise.
+  inferred_concept_id: closures_in_javascript:closure
+  inferred_concept_confidence: 0.9
+expected:
+  score_min: 4
+  score_max: 5
+  updates_mastery: true

@@ -96,3 +96,27 @@ def test_get_mastery_for_user(tmp_db, closures_topic_data):
   assert len(rows) == 1
   assert rows[0].kind == "topic"
   assert rows[0].score_1_to_5 == 4.0
+
+
+def test_get_open_session_study_only(tmp_db):
+  """Baseline sessions must not be returned as open study sessions."""
+  queries.get_or_create_user(tmp_db, "u1")
+  queries.upsert_topic_concepts(
+    tmp_db, {"topic": "binary_search", "display_name": "Binary Search", "concepts": []}
+  )
+  baseline_id = queries.create_session(
+    tmp_db, "u1", "binary_search", session_kind="baseline",
+  )
+  assert queries.get_open_session(tmp_db, "u1", "binary_search") is None
+  assert queries.get_open_session(
+    tmp_db, "u1", "binary_search", session_kind="baseline",
+  ) == baseline_id
+
+  study_id = queries.create_session(tmp_db, "u1", "binary_search")
+  assert queries.get_open_session(tmp_db, "u1", "binary_search") == study_id
+
+  queries.close_open_study_sessions(tmp_db, "u1", "binary_search")
+  assert queries.get_open_session(tmp_db, "u1", "binary_search") is None
+  assert queries.get_open_session(
+    tmp_db, "u1", "binary_search", session_kind="baseline",
+  ) == baseline_id

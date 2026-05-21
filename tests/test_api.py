@@ -94,6 +94,27 @@ def test_turn_on_unknown_session(client):
     assert r.status_code == 404
 
 
+def test_session_turns_list(client, mock_llm):
+    start = client.post(
+        "/sessions",
+        json={"user_id": USER, "topic": TOPIC, "resume": False},
+    )
+    sid = start.json()["session_id"]
+    client.post(f"/sessions/{sid}/turn", json={"answer": "Scope chain."})
+    turns = client.get(f"/sessions/{sid}/turns")
+    assert turns.status_code == 200
+    data = turns.json()
+    assert len(data) >= 2
+    assert data[0]["role"] == "tutor"
+    assert any(t["role"] == "user" for t in data)
+
+
+def test_due_endpoint(client):
+    r = client.get(f"/users/{USER}/due")
+    assert r.status_code == 200
+    assert "items" in r.json()
+
+
 def test_unknown_topic(client):
     r = client.post(
         "/sessions",

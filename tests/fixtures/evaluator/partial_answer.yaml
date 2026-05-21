@@ -1,0 +1,12 @@
+name: partial_answer
+evaluation:
+  score: 3
+  gaps:
+    - Missing edge case
+  reasoning: Right direction but incomplete.
+  inferred_concept_id: closures_in_javascript:closure
+  inferred_concept_confidence: 0.8
+expected:
+  score_min: 3
+  score_max: 3
+  updates_mastery: true
