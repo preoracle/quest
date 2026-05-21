@@ -1,9 +1,9 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { AuthControls } from "@/components/AuthControls";
 import { QuestLogo } from "@/components/QuestLogo";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 
 export function SiteNav() {
   const reduce = useReducedMotion();
@@ -29,13 +29,11 @@ export function SiteNav() {
         hidden && !reduce && "-translate-y-full",
       )}
     >
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+      <div className="mx-auto flex h-16 max-w-catalog items-center justify-between px-gutter-app">
         <Link to="/" className="flex items-center">
           <QuestLogo size="sm" />
         </Link>
-        <Button asChild size="sm">
-          <Link to="/topics">Start studying</Link>
-        </Button>
+        <AuthControls />
       </div>
     </motion.header>
   );

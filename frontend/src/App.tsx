@@ -1,21 +1,86 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "@clerk/react";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppLayout } from "@/layouts/AppLayout";
 import { HomePage } from "@/pages/HomePage";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { TopicsPage } from "@/pages/TopicsPage";
+import { TopicDetailPage } from "@/pages/TopicDetailPage";
 import { DuePage } from "@/pages/DuePage";
 import { MasteryPage } from "@/pages/MasteryPage";
 import { SessionPage } from "@/pages/SessionPage";
 import { BaselinePage } from "@/pages/BaselinePage";
 
+function HomeRedirect() {
+  const { isSignedIn, isLoaded } = useAuth();
+  if (!isLoaded) return null;
+  if (isSignedIn) return <Navigate to="/dashboard" replace />;
+  return <HomePage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/topics" element={<TopicsPage />} />
-        <Route path="/due" element={<DuePage />} />
-        <Route path="/mastery" element={<MasteryPage />} />
-        <Route path="/baseline/:topicId" element={<BaselinePage />} />
-        <Route path="/session/:sessionId" element={<SessionPage />} />
+        <Route path="/" element={<HomeRedirect />} />
+        <Route element={<AppLayout />}>
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/topics"
+            element={
+              <ProtectedRoute>
+                <TopicsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/topics/:topicId"
+            element={
+              <ProtectedRoute>
+                <TopicDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/due"
+            element={
+              <ProtectedRoute>
+                <DuePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mastery"
+            element={
+              <ProtectedRoute>
+                <MasteryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/baseline/:topicId"
+            element={
+              <ProtectedRoute>
+                <BaselinePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/session/:sessionId"
+            element={
+              <ProtectedRoute>
+                <SessionPage />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
