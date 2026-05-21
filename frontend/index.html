@@ -11,6 +11,14 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!-- Apply theme before first paint to prevent flash -->
+    <script>
+      (function(){
+        var s=localStorage.getItem('quest:theme');
+        var t=s||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+        document.documentElement.setAttribute('data-theme',t);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { AuthControls } from "@/components/AuthControls";
 import { MobileNav } from "@/components/MobileNav";
 import { QuestLogo } from "@/components/QuestLogo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { BarChart2, BookOpen, Calendar, LayoutGrid, Radio } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { MasteryTicks } from "@/components/MasteryTicks";
@@ -62,11 +63,11 @@ export function AppShell({
       <div className="flex h-full min-h-0 w-full flex-1">
 
         {/* Sidebar */}
-        <aside className="hidden h-full w-rail shrink-0 flex-col border-r border-white/4 px-4 py-6 backdrop-blur-2xl lg:flex" style={{ background: "linear-gradient(to right, rgb(10 10 16 / 0.85), rgb(8 8 14 / 0.78))" }}>
+        <aside className="sidebar-bg hidden h-full w-rail shrink-0 flex-col border-r border-line/20 px-4 py-6 backdrop-blur-2xl lg:flex">
           <Link to="/dashboard" className="pl-1">
             <QuestLogo size="md" />
           </Link>
-          <p className="mt-2 pl-1 text-[11px] leading-relaxed text-on-muted/60">
+          <p className="mt-2 pl-1 text-xs leading-relaxed text-on-muted/70">
             Master anything.
           </p>
           <nav className="mt-8 flex flex-col gap-0.5">
@@ -81,7 +82,7 @@ export function AppShell({
                     : "text-on-muted hover:bg-surface-muted/60 hover:text-on-surface",
                 )}
               >
-                <Icon className="size-4 shrink-0 opacity-80" />
+                <Icon className="size-[1.1rem] shrink-0 opacity-80" />
                 {label}
               </Link>
             ))}
@@ -132,7 +133,7 @@ export function AppShell({
                       {topicSession.name}
                     </span>
                     {topicSession.live && (
-                      <span className="shrink-0 rounded-full bg-accent-dim px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                      <span className="shrink-0 rounded-full bg-accent-dim px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent">
                         Live
                       </span>
                     )}
@@ -158,6 +159,7 @@ export function AppShell({
                 {masteryScore !== undefined && masteryScore > 0 && (
                   <MasteryTicks score={masteryScore} />
                 )}
+                <ThemeToggle />
                 <AuthControls />
               </div>
             </div>
@@ -172,7 +174,7 @@ export function AppShell({
                 gutterPx,
               )}
             >
-              <Radio className="size-3.5 shrink-0 animate-pulse text-accent" />
+              <Radio className="size-4 shrink-0 animate-pulse text-accent" />
               <span className="flex-1 truncate text-on-surface">
                 {activeSession.topicDisplay}
               </span>

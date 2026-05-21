@@ -88,7 +88,7 @@ export function HeroDemoCard() {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-      className="relative w-full max-w-[27rem] overflow-hidden rounded-2xl border border-line/40 bg-surface/40 p-5 shadow-[0_32px_80px_rgb(0_0_0/0.65)] backdrop-blur-2xl"
+      className="hero-demo-shadow relative w-full max-w-[27rem] overflow-hidden rounded-2xl border border-line/40 bg-surface/40 p-5 backdrop-blur-2xl"
     >
       {/* Glow */}
       <div className="pointer-events-none absolute -top-20 left-1/3 size-48 -translate-x-1/2 rounded-full bg-accent/10 blur-3xl" />

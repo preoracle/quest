@@ -41,7 +41,8 @@
     @apply antialiased;
     font-family: var(--font-sans);
     font-size: 16px;
-    line-height: 1.6;
+    font-weight: 450;
+    line-height: 1.75;
     scroll-behavior: smooth;
   }
 
@@ -75,6 +76,31 @@
     html {
       scroll-behavior: auto;
     }
+  }
+
+  /* ── Light theme token overrides ──────────────────────────────────────
+     html[data-theme="light"] wins over :root from @theme (higher specificity).
+     All Tailwind utilities that reference var(--color-*) update automatically. */
+  /* Warm parchment — "library at noon". Every surface is cream-amber,
+     never grey-white, so the gold accent feels at home. */
+  html[data-theme="light"] {
+    --color-void: #f3efe6;
+    --color-canvas: #ebe6dc;
+    --color-surface: #f7f4ee;
+    --color-surface-elevated: #faf8f3;
+    --color-surface-muted: #e4e0d6;
+    --color-on-surface: #18160e;
+    --color-on-muted: #6a6558;
+    --color-line: #c8c3b6;
+    --color-line-soft: #d8d4ca;
+    /* Gold adjusted for warm-cream background — WCAG AA */
+    --color-accent: #9a6e22;
+    --color-accent-dim: #9a6e220f;
+    --color-accent-glow: #b88030;
+    /* Score colors darkened for cream-bg contrast */
+    --color-score-good: #1a8a48;
+    --color-score-mid: #9a6e22;
+    --color-score-low: #bf3c3c;
   }
 }
 
@@ -196,7 +222,7 @@
   }
 
   .section-label {
-    @apply mb-2 flex items-baseline gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-accent/85;
+    @apply mb-2 flex items-baseline gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-accent/85;
   }
 
   .min-h-create-slot {
@@ -213,5 +239,74 @@
 
   .max-w-shell {
     max-width: var(--width-shell);
+  }
+
+  /* ── Sidebar background (replaces inline style so light mode can override) */
+  .sidebar-bg {
+    background: linear-gradient(to right, rgb(10 10 16 / 0.85), rgb(8 8 14 / 0.78));
+  }
+
+  /* ── Light-mode overrides for utilities with hardcoded RGB values ──── */
+
+  [data-theme="light"] .sidebar-bg {
+    background: linear-gradient(to right, rgb(231 226 215 / 0.97), rgb(239 234 224 / 0.93));
+  }
+
+  [data-theme="light"] .mesh-bg {
+    background-color: var(--color-void);
+    /* Warm amber pools — subtle depth, no cool-blue notes */
+    background-image:
+      radial-gradient(ellipse 90% 55% at 50% -15%, rgb(154 110 34 / 0.10), transparent),
+      radial-gradient(ellipse 65% 45% at 100% 5%, rgb(180 148 70 / 0.06), transparent),
+      radial-gradient(ellipse 55% 35% at 0% 95%, rgb(154 110 34 / 0.07), transparent),
+      radial-gradient(ellipse 40% 30% at 80% 60%, rgb(170 138 60 / 0.04), transparent);
+  }
+
+  [data-theme="light"] .header-glass {
+    background: linear-gradient(
+      to bottom,
+      rgb(243 239 230 / 0.93) 0%,
+      rgb(235 230 220 / 0.88) 100%
+    );
+    backdrop-filter: blur(48px) saturate(1.4) brightness(1.01);
+    -webkit-backdrop-filter: blur(48px) saturate(1.4) brightness(1.01);
+    box-shadow:
+      0 1px 0 rgb(200 195 182 / 0.9),
+      0 16px 48px rgb(0 0 0 / 0.04),
+      0 0 0 1px rgb(154 110 34 / 0.06) inset;
+  }
+
+  [data-theme="light"] .glass-panel {
+    background: linear-gradient(135deg, rgb(247 244 238 / 0.8) 0%, rgb(235 230 218 / 0.7) 100%);
+    border: 1px solid rgb(200 195 182 / 0.7);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 0.06), 0 1px 0 rgb(250 248 240 / 0.8) inset;
+  }
+
+  [data-theme="light"] .card {
+    box-shadow: 0 2px 16px rgb(0 0 0 / 0.06), 0 1px 0 rgb(255 255 255 / 0.9) inset;
+  }
+
+  [data-theme="light"] .card-hover:hover {
+    box-shadow: 0 6px 28px rgb(0 0 0 / 0.09), 0 1px 0 rgb(255 255 255 / 1) inset;
+  }
+
+  /* ── Fix: noise texture blend mode for light bg */
+  [data-theme="light"] .noise-overlay::after {
+    mix-blend-mode: multiply;
+  }
+
+  /* ── Fix: shadows are too heavy on cream backgrounds */
+  .hero-demo-shadow {
+    box-shadow: 0 32px 80px rgb(0 0 0 / 0.65);
+  }
+  [data-theme="light"] .hero-demo-shadow {
+    box-shadow: 0 12px 40px rgb(0 0 0 / 0.10), 0 2px 8px rgb(0 0 0 / 0.06);
+  }
+
+  .graph-popup-shadow {
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.6);
+  }
+  [data-theme="light"] .graph-popup-shadow {
+    box-shadow: 0 6px 24px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.04);
   }
 }

@@ -141,7 +141,7 @@ function NodePopup({
       exit={{ opacity: 0, scale: 0.95, y: -4 }}
       transition={{ duration: 0.18 }}
       style={{ position: "absolute", top: screenY, left, width: 260, zIndex: 20 }}
-      className="rounded-xl border border-accent/25 bg-surface-elevated p-4 shadow-[0_16px_48px_rgb(0_0_0/0.6)] backdrop-blur-xl"
+      className="graph-popup-shadow rounded-xl border border-accent/25 bg-surface-elevated p-4 backdrop-blur-xl"
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold leading-snug text-on-surface">{node.name}</p>

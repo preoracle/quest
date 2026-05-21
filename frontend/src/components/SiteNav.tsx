@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AuthControls } from "@/components/AuthControls";
 import { QuestLogo } from "@/components/QuestLogo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 export function SiteNav() {
@@ -33,7 +34,10 @@ export function SiteNav() {
         <Link to="/" className="flex items-center">
           <QuestLogo size="sm" />
         </Link>
-        <AuthControls />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <AuthControls />
+        </div>
       </div>
     </motion.header>
   );
