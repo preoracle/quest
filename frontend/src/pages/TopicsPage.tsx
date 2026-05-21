@@ -131,13 +131,14 @@ export function TopicsPage() {
     setStarting(topicId);
     recordTopicUse(topicId);
     try {
-      const session = await startSession(topicId, mode);
-      if (session.done) {
-        const fresh = await startSession(topicId, "replay");
-        navigate(`/session/${fresh.session_id}`);
-      } else {
-        navigate(`/session/${session.session_id}`);
+      let session = await startSession(topicId, mode);
+      if (session.done && mode !== "replay") {
+        session = await startSession(topicId, "resume");
       }
+      if (session.done) {
+        session = await startSession(topicId, "replay");
+      }
+      navigate(`/session/${session.session_id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start session");
     } finally {

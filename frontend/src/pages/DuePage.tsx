@@ -71,6 +71,9 @@ export function DuePage() {
     try {
       let session = await startSession(topicId, "study");
       if (session.done) {
+        session = await startSession(topicId, "resume");
+      }
+      if (session.done) {
         session = await startSession(topicId, "replay");
       }
       navigate(`/session/${session.session_id}`);

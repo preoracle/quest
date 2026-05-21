@@ -1,17 +1,21 @@
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, RotateCcw, Sparkles, TrendingUp } from "lucide-react";
+import { CheckCircle2, Play, RotateCcw, Sparkles, TrendingUp } from "lucide-react";
 import type { SessionView } from "@/api/types";
 import { SessionReportView } from "@/components/SessionReportView";
 import { Button } from "@/components/ui/button";
 
 export function SessionCompletePanel({
   session,
+  onContinueStudy,
   onStartFresh,
+  continuingStudy,
   startingFresh,
 }: {
   session: SessionView;
+  onContinueStudy?: () => void;
   onStartFresh?: () => void;
+  continuingStudy?: boolean;
   startingFresh?: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -19,12 +23,26 @@ export function SessionCompletePanel({
   const isEmpty = evaluated === 0;
   const concepts = session.report?.concepts ?? [];
 
-  const masteredThisSession = concepts.filter((c) => c.last_score >= 4).length;
-  const conceptsWorked = concepts.length;
+  const conceptCount = session.report?.concept_count ?? 0;
+  const masteredCount = session.report?.mastered_count ?? 0;
+  const topicComplete = session.report?.topic_complete ?? false;
+
+  const strongAnswers = concepts.filter((c) => c.last_score >= 4).length;
   const avgScore =
     concepts.length > 0
       ? concepts.reduce((sum, c) => sum + c.last_score, 0) / concepts.length
       : null;
+
+  const title = isEmpty
+    ? "Nothing to study right now"
+    : topicComplete
+      ? "Topic complete"
+      : "Session paused";
+
+  const subtitle =
+    conceptCount > 0
+      ? `${masteredCount} of ${conceptCount} concepts mastered`
+      : session.topic_display;
 
   const stats = [
     {
@@ -33,8 +51,8 @@ export function SessionCompletePanel({
       color: "text-on-surface",
     },
     {
-      value: String(masteredThisSession),
-      label: "Mastered this run",
+      value: String(strongAnswers),
+      label: "Strong answers (4+)",
       color: "text-score-good",
     },
     {
@@ -58,13 +76,13 @@ export function SessionCompletePanel({
         </span>
         <div>
           <h1 className="font-display text-xl font-semibold text-on-surface">
-            {isEmpty ? "Nothing to study right now" : "Session complete"}
+            {title}
           </h1>
-          <p className="mt-1 text-sm text-on-muted">{session.topic_display}</p>
+          <p className="mt-1 text-sm text-on-muted">{subtitle}</p>
         </div>
       </motion.div>
 
-      {!isEmpty && conceptsWorked > 0 && (
+      {!isEmpty && concepts.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {stats.map(({ value, label, color, suffix }, i) => (
             <motion.div
@@ -94,17 +112,24 @@ export function SessionCompletePanel({
           transition={{ delay: 0.2 }}
         >
           <p>
-            Every concept in this topic is already marked as mastered, or the
-            scheduler has nothing due. That is why you landed here with no new
-            questions.
-          </p>
-          <p className="mt-3">
-            Start a{" "}
-            <strong className="font-medium text-on-surface">fresh run</strong> to
-            walk the map again, or pick another topic from review.
+            Every concept in this topic is already mastered, or the scheduler has
+            nothing due. Start a fresh run to walk the map again, or pick another
+            topic.
           </p>
         </motion.div>
-      ) : session.report ? (
+      ) : !topicComplete ? (
+        <motion.p
+          className="text-sm leading-relaxed text-on-muted"
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          You can resume this topic anytime — there are still concepts on the
+          learning path. Continue studying or use a fresh run for extra practice.
+        </motion.p>
+      ) : null}
+
+      {!isEmpty && session.report ? (
         <motion.div
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -112,7 +137,7 @@ export function SessionCompletePanel({
         >
           <SessionReportView report={session.report} />
         </motion.div>
-      ) : (
+      ) : isEmpty ? null : (
         <p className="text-sm text-on-muted">{session.summary ?? "Well done."}</p>
       )}
 
@@ -122,13 +147,23 @@ export function SessionCompletePanel({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.35 }}
       >
+        {!topicComplete && onContinueStudy && (
+          <Button disabled={continuingStudy} onClick={onContinueStudy}>
+            <Play className="size-4" />
+            {continuingStudy ? "Starting…" : "Continue studying"}
+          </Button>
+        )}
         {onStartFresh && (
-          <Button disabled={startingFresh} onClick={onStartFresh}>
+          <Button
+            disabled={startingFresh}
+            variant={!topicComplete && onContinueStudy ? "outline" : "default"}
+            onClick={onStartFresh}
+          >
             <RotateCcw className="size-4" />
             {startingFresh ? "Starting…" : "Fresh run"}
           </Button>
         )}
-        <Button asChild variant={onStartFresh ? "outline" : "default"}>
+        <Button asChild variant="outline">
           <Link to="/topics">
             <Sparkles className="size-4" />
             Topics

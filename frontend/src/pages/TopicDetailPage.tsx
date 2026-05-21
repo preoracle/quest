@@ -45,6 +45,9 @@ export function TopicDetailPage() {
     try {
       let session = await startSession(topicId, mode);
       if (session.done && mode !== "replay") {
+        session = await startSession(topicId, "resume");
+      }
+      if (session.done) {
         session = await startSession(topicId, "replay");
       }
       navigate(`/session/${session.session_id}`);

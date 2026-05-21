@@ -133,13 +133,14 @@ export function DashboardPage() {
     recordTopicUse(topicId);
     recordStudyDay();
     try {
-      const session = await startSession(topicId, mode);
-      if (session.done) {
-        const fresh = await startSession(topicId, "replay");
-        navigate(`/session/${fresh.session_id}`);
-      } else {
-        navigate(`/session/${session.session_id}`);
+      let session = await startSession(topicId, mode);
+      if (session.done && mode !== "replay") {
+        session = await startSession(topicId, "resume");
       }
+      if (session.done) {
+        session = await startSession(topicId, "replay");
+      }
+      navigate(`/session/${session.session_id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start session");
     } finally {
@@ -252,7 +253,7 @@ export function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                 >
-                  <h2 className="section-label mb-2">All topics</h2>
+                  <h2 className="section-label mb-2">In progress</h2>
                   <div className="flex flex-col gap-1.5">
                     {continueTopics.map((topic, i) => {
                       const pct = topic.concept_count

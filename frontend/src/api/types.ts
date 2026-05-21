@@ -50,6 +50,9 @@ export interface SessionReport {
   topic_display: string;
   total_turns: number;
   evaluated_answers: number;
+  concept_count?: number;
+  mastered_count?: number;
+  topic_complete?: boolean;
   concepts: ConceptReportRow[];
   top_gaps: string[];
   narrative: string | null;
