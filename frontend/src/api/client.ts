@@ -1,7 +1,15 @@
 import type {
+  BaselineView,
+  DueResponse,
   MasteryResponse,
   SessionView,
-  Topic,
+  StartMode,
+  TopicCatalogItem,
+  TopicCatalogResponse,
+  TopicCreated,
+  TopicGraph,
+  TopicSummaryResponse,
+  TurnItem,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -16,24 +24,78 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || res.statusText);
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? JSON.stringify(body);
+    } catch {
+      detail = await res.text().catch(() => detail);
+    }
+    throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
   return res.json() as Promise<T>;
 }
 
-export function fetchTopics(): Promise<Topic[]> {
-  return request<Topic[]>("/topics");
+export function fetchTopics(): Promise<TopicCatalogItem[]> {
+  return request<TopicCatalogResponse>("/topics").then((r) => r.topics);
+}
+
+export function fetchProgressSummary(): Promise<TopicSummaryResponse> {
+  return request<TopicSummaryResponse>(`/users/${USER_ID}/progress/summary`);
+}
+
+export function fetchTopicGraph(topicId: string): Promise<TopicGraph> {
+  return request<TopicGraph>(
+    `/topics/${encodeURIComponent(topicId)}/graph?user_id=${USER_ID}`,
+  );
+}
+
+export function generateTopic(goal: string, force = false): Promise<TopicCreated> {
+  return request<TopicCreated>("/topics/generate", {
+    method: "POST",
+    body: JSON.stringify({ goal, force }),
+  });
+}
+
+export function importTopicYaml(
+  yamlText: string,
+  force = false,
+): Promise<TopicCreated> {
+  return request<TopicCreated>("/topics/import", {
+    method: "POST",
+    body: JSON.stringify({ yaml_text: yamlText, force }),
+  });
+}
+
+export function startBaseline(topic: string): Promise<BaselineView> {
+  return request<BaselineView>("/baseline", {
+    method: "POST",
+    body: JSON.stringify({ user_id: USER_ID, topic }),
+  });
+}
+
+export function submitBaselineAnswer(
+  sessionId: string,
+  answer: string,
+): Promise<BaselineView> {
+  return request<BaselineView>(`/baseline/${sessionId}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
 }
 
 export function startSession(
   topic: string,
-  resume = true,
-  replay = false,
+  mode: StartMode = "resume",
 ): Promise<SessionView> {
   return request<SessionView>("/sessions", {
     method: "POST",
-    body: JSON.stringify({ user_id: USER_ID, topic, resume, replay }),
+    body: JSON.stringify({
+      user_id: USER_ID,
+      topic,
+      resume: mode === "resume",
+      replay: mode === "replay",
+    }),
   });
 }
 
@@ -51,9 +113,18 @@ export function fetchSession(sessionId: string): Promise<SessionView> {
   return request<SessionView>(`/sessions/${sessionId}`);
 }
 
+export function fetchSessionTurns(sessionId: string): Promise<TurnItem[]> {
+  return request<TurnItem[]>(`/sessions/${sessionId}/turns`);
+}
+
 export function fetchMastery(topic?: string): Promise<MasteryResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
   return request<MasteryResponse>(`/users/${USER_ID}/mastery${q}`);
+}
+
+export function fetchDue(topic?: string): Promise<DueResponse> {
+  const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+  return request<DueResponse>(`/users/${USER_ID}/due${q}`);
 }
 
 export { USER_ID };
