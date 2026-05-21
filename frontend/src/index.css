@@ -1,42 +1,122 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #14130f;
-  --color-surface-container-low: #1d1c17;
-  --color-surface-container: #21201b;
-  --color-surface-container-high: #2b2a25;
-  --color-on-surface: #e7e2da;
-  --color-on-surface-variant: #c8c5cd;
-  --color-outline-variant: #47464c;
-  --color-primary: #c6c4df;
-  --color-secondary: #e6c364;
-  --color-background: #14130f;
+  --color-void: #060608;
+  --color-canvas: #0a0a0f;
+  --color-surface: #111118;
+  --color-surface-elevated: #18181f;
+  --color-surface-muted: #1f1f28;
+  --color-on-surface: #f4f4f8;
+  --color-on-muted: #9494a8;
+  --color-line: #2a2a36;
+  --color-line-soft: #1e1e28;
+  --color-accent: #d4a853;
+  --color-accent-dim: #d4a8531a;
+  --color-accent-glow: #e8c47a;
+  --color-score-good: #5fd68a;
+  --color-score-mid: #d4a853;
+  --color-score-low: #f08080;
 
-  --font-display: "Playfair Display", serif;
-  --font-body: "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  --width-reading: 720px;
-  --width-container: 1140px;
+  --width-reading: 42rem;
+  --width-rail: 15.5rem;
 }
 
 @layer base {
   html {
-    @apply bg-background text-on-surface antialiased;
-    font-family: var(--font-body);
+    @apply antialiased;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply min-h-screen;
+    @apply min-h-screen bg-void text-on-surface;
+  }
+
+  ::selection {
+    background: rgb(212 168 83 / 0.35);
+    color: var(--color-on-surface);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 }
 
-.grain::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  z-index: 0;
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  .text-hero {
+    font-size: clamp(2.75rem, 7vw, 5rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+  }
+
+  .mesh-bg {
+    background-color: var(--color-void);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(212 168 83 / 0.14), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(140 160 255 / 0.06), transparent),
+      radial-gradient(ellipse 50% 30% at 0% 100%, rgb(212 168 83 / 0.05), transparent);
+  }
+
+  .noise-overlay::after {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .card {
+    @apply rounded-xl border border-line/80 bg-surface-elevated/80 shadow-[0_4px_24px_rgb(0_0_0/0.35)] backdrop-blur-sm;
+  }
+
+  .card-hover {
+    @apply transition-[border-color,transform,box-shadow] duration-300 hover:border-accent/30 hover:shadow-[0_8px_32px_rgb(0_0_0/0.45)] hover:-translate-y-0.5;
+  }
+
+  .question-card {
+    @apply relative overflow-hidden rounded-xl border border-line/80 p-8 shadow-[0_4px_24px_rgb(0_0_0/0.35)] backdrop-blur-sm md:p-10;
+    background: linear-gradient(
+      145deg,
+      rgb(24 24 31 / 0.95) 0%,
+      rgb(17 17 24 / 0.98) 100%
+    );
+  }
+
+  .question-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(212 168 83 / 0.5),
+      transparent
+    );
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-surface-muted;
+  }
 }
