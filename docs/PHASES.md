@@ -89,6 +89,8 @@ same SQLite state as one driven through the CLI.
 ## Phase 5 — React frontend (Days 12–14)
 UI on top of the REST API. Visual reference: `stitch_quest_socratic_ai/` (Socratic Minimalist dark theme).
 
+**Stitch brief (regenerate or refine screens):** [STITCH_UI_PROMPT.md](STITCH_UI_PROMPT.md)
+
 **Layout:** single repo, `frontend/` (Vite + React + Tailwind). Not a Turborepo.
 
 **Run (two terminals):**

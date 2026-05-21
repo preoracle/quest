@@ -6,7 +6,7 @@
 
 ---
 
-## Phase A — Ship the CLI ✅ (0.1.1)
+## Phase A — Ship the CLI ✅ (0.1.x)
 
 | Item | Status |
 |------|--------|
@@ -23,18 +23,24 @@
 
 ## Phase B — Paid-product core
 
-1. **Session report** — end-of-session summary: concepts touched, scores, gaps.
-2. **`quest due`** — SM-2: concepts due today.
-3. **Eval fixtures** — golden transcripts; CI without live API.
-4. **Dialogue modes** — explicit probe vs thread (evaluator context).
+Detailed plan: **[PHASE_B_PLAN.md](PHASE_B_PLAN.md)**.
+
+| Item | Status (0.3.0) |
+|------|----------------|
+| Session report | ✅ |
+| `quest due` | ✅ |
+| Eval fixtures | ✅ |
+| Cross-session memory | ✅ |
+| Baseline assessment | ✅ |
+| Dialogue modes | ✅ |
 
 ---
 
-## Phase C — Distribution & polish
+## Phase C — Distribution & polish ✅
 
-1. Publish **0.1.1** to PyPI (maintainer: yuvrxj).
-2. Docs site or README polish.
-3. Frontend as optional face (API exists).
+1. PyPI publish via `./scripts/publish_pypi.sh` (0.3.0).
+2. **Web UI redesign** — catalog → live transcript session → structured report; Due + Progress pages.
+3. API: `GET /sessions/{id}/turns`, `GET /users/{id}/due`.
 
 ---
 
