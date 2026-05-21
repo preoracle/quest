@@ -11,9 +11,11 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
 from core.chains import build_evaluator_chain, build_socratic_chain
+from core.eval_context import build_evaluator_invoke_payload, get_eval_mode
 from core.concept_pick import pick_next_concept, pick_next_concept_replay
 from core.mastery import apply_evaluation_to_mastery
 from core.memory import summarize_session
+from core.session_report import build_session_report
 from core.messages import message_content, messages_from_dicts, messages_to_dicts
 from core.models import EvaluatorOutput
 from db import queries
@@ -70,6 +72,7 @@ class QuestState(TypedDict, total=False):
     last_evaluation: dict | None
     replay_mode: bool
     completed_concept_ids: list[str]
+    session_report: dict | None
 
 
 def build_checkpointer() -> SqliteSaver:
@@ -126,6 +129,7 @@ def build_quest_graph(
         concept_name = state.get("current_concept_name") or "this topic"
         scope = state.get("current_concept_scope") or ""
         turn_count = state.get("concept_turn_count", 0)
+        user_id = state["user_id"]
 
         # Opening turn: one-shot instructor steer (not saved). Follow-ups use real dialogue.
         if turn_count == 0:
@@ -136,6 +140,13 @@ def build_quest_graph(
             )
             if scope:
                 steer += f" Probe scope (shape the question; do not quote verbatim): {scope}"
+            prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=2)
+            if prior:
+                snippets = " | ".join(s[:280] for s in prior)
+                steer += (
+                    " Prior sessions on this topic (vary your angle; do not repeat): "
+                    f"{snippets}"
+                )
             steer += "]"
             invoke_history = [HumanMessage(content=steer)]
         else:
@@ -167,14 +178,15 @@ def build_quest_graph(
 
     def evaluate_answer(state: QuestState) -> dict:
         """Score the student's answer with the evaluator chain."""
-        evaluation: EvaluatorOutput = evaluator.invoke(
-            {
-                "topic": state["topic_id"],
-                "concept_list": state["concept_list"],
-                "tutor_question": state.get("last_tutor_question") or "",
-                "student_answer": state["user_input"],
-            }
+        payload = build_evaluator_invoke_payload(
+            topic_id=state["topic_id"],
+            concept_list=state["concept_list"],
+            tutor_question=state.get("last_tutor_question") or "",
+            student_answer=state["user_input"],
+            history=state.get("history"),
+            mode=get_eval_mode(),
         )
+        evaluation: EvaluatorOutput = evaluator.invoke(payload)
         turn_idx = state.get("turn_idx", 0)
         queries.record_turn(
             conn,
@@ -226,15 +238,27 @@ def build_quest_graph(
         return {"advance_concept": False}
 
     def summarize(state: QuestState) -> dict:
-        """End session and write summary_text."""
+        """End session: structured report + optional narrative summary."""
         session_id = state["session_id"]
         from core.topics import load_topic
 
         topic_id = state["topic_id"]
         display = load_topic(topic_id).get("display_name") or topic_id
-        queries.end_session(conn, session_id)
         summary = summarize_session(conn, session_id, display)
-        return {"done": True, "tutor_message": f"\nSession complete.\n\n{summary}\n"}
+        report = build_session_report(
+            conn,
+            session_id,
+            topic_id,
+            display,
+            narrative=summary,
+        )
+        queries.set_session_report(conn, session_id, report.model_dump_json())
+        queries.end_session(conn, session_id)
+        return {
+            "done": True,
+            "session_report": report.model_dump(),
+            "tutor_message": "Session complete.",
+        }
 
     def route_after_pick(state: QuestState) -> Literal["ask_question", "summarize"]:
         if state.get("session_complete"):

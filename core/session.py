@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from core.baseline import run_baseline_assessment
 from core.session_api import SessionView, start_session, submit_turn
 from core.ui import QuestCliUi
 from db import queries
@@ -19,13 +20,28 @@ def run_session(
     topic_id: str,
     *,
     replay: bool = False,
+    baseline: bool = False,
 ) -> None:
     """Run or resume a Socratic session until the user pauses or the DAG completes.
 
     ``replay=True`` starts a **new** session that walks the full concept DAG again
     for this run (scheduling ignores stored mastery). Still updates mastery in DB.
+
+    ``baseline=True`` runs a short calibration (≤5 concepts), seeds mastery, then study.
     """
     ui = QuestCliUi()
+
+    if baseline:
+        ui.render_baseline_intro(topic_id)
+        result = run_baseline_assessment(
+            conn,
+            user_id,
+            topic_id,
+            on_question=lambda q: _baseline_answer(ui, q),
+            on_result=lambda r: ui.render_baseline_row(r),
+        )
+        ui.render_baseline_complete(result)
+        replay = False
     want_resume = not replay
     open_id = (
         queries.get_open_session(conn, user_id, topic_id) if want_resume else None
@@ -38,6 +54,14 @@ def run_session(
     ui.sticky.enable(ui.build_header_lines(view, progress))
 
     try:
+        if not baseline and not queries.topic_has_concept_mastery(
+            conn, user_id, topic_id,
+        ):
+            ui.console.print(
+                "[dim]Tip: first time on this topic? "
+                "Run [bold]quest "
+                f"{topic_id} --baseline[/bold] to calibrate.[/dim]\n"
+            )
         ui.render_session_start(
             view, resuming=bool(open_id) and not replay,
         )
@@ -121,3 +145,13 @@ def _handle_command(
 
     ui.console.print(f"[dim]Unknown command: {command}. Try /help.[/dim]\n")
     return False
+
+
+def _baseline_answer(ui: QuestCliUi, question: str) -> str:
+    """Prompt for one baseline probe answer."""
+    ui.render_baseline_probe(question)
+    try:
+        return ui.prompt_answer().strip()
+    except (EOFError, KeyboardInterrupt):
+        ui.render_paused()
+        raise SystemExit(0) from None

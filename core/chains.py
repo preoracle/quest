@@ -96,6 +96,10 @@ def build_evaluator_chain() -> Runnable:
         return {
             "topic": inputs["topic"],
             "concept_list_json": json.dumps(concepts, indent=2),
+            "scoring_scope": inputs.get(
+                "scoring_scope",
+                "Score ONLY the latest tutor question and student answer pair below.",
+            ),
             "tutor_question": inputs["tutor_question"],
             "student_answer": inputs["student_answer"],
         }

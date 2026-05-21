@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from core.graph import build_checkpointer, build_quest_graph, seed_state_from_turns
 from core.models import EvaluatorOutput
+from core.session_report import SessionReport, report_from_json
 from core.topics import load_topic
 from db import queries
 
@@ -41,6 +42,7 @@ class SessionView(BaseModel):
     tutor_message: str | None = None
     last_evaluation: EvaluationView | None = None
     summary: str | None = None
+    report: SessionReport | None = None
     ended_at: str | None = None
 
 
@@ -71,9 +73,14 @@ def _values_to_view(
 
     done = bool(values.get("done"))
     tutor = values.get("tutor_message")
-    summary = None
-    if done and tutor:
-        summary = session_row.get("summary_text") or tutor
+    summary = session_row.get("summary_text") if done else None
+    report = None
+    if done:
+        raw_report = values.get("session_report")
+        if raw_report:
+            report = SessionReport.model_validate(raw_report)
+        elif session_row.get("report_json"):
+            report = report_from_json(session_row["report_json"])
 
     return SessionView(
         session_id=session_row["id"],
@@ -87,6 +94,7 @@ def _values_to_view(
         tutor_message=tutor if waiting or done else None,
         last_evaluation=evaluation,
         summary=summary,
+        report=report,
         ended_at=session_row.get("ended_at"),
     )
 
@@ -118,6 +126,7 @@ def get_session_view(conn: sqlite3.Connection, session_id: str) -> SessionView:
             topic_display=display,
             done=True,
             summary=row.get("summary_text"),
+            report=report_from_json(row.get("report_json")),
             ended_at=row["ended_at"],
         )
 
@@ -153,6 +162,8 @@ def start_session(
         session_id = open_id
         resuming = True
     else:
+        if not want_resume:
+            queries.close_open_study_sessions(conn, user_id, topic_id)
         session_id = queries.create_session(conn, user_id, topic_id)
         resuming = False
 
@@ -163,6 +174,12 @@ def start_session(
     snapshot = graph.get_state(config)
     if not snapshot.values:
         if resuming:
+            row = queries.get_session(conn, session_id)
+            if row and row.get("session_kind") != "study":
+                raise ValueError(
+                    f"Session {session_id} is not a study session; "
+                    "start a new session instead."
+                )
             state = seed_state_from_turns(
                 conn, session_id, user_id, topic_id, concept_list
             )

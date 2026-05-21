@@ -179,6 +179,64 @@ class QuestCliUi:
             items=items,
         )
 
+    def render_baseline_intro(self, topic_id: str) -> None:
+        """Explain baseline calibration before study."""
+        topic_data = load_topic(topic_id)
+        display = topic_data.get("display_name") or topic_id
+        self.console.print(
+            Panel(
+                "Short calibration (up to 5 concepts): one question each, "
+                "then we seed your mastery map so study skips what you already know.\n"
+                "[dim]/quit pauses · empty answer skips that concept[/dim]",
+                title=f"[bold]Baseline — {display}[/bold]",
+                border_style="#e6c364",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+        )
+        self.console.print()
+
+    def render_baseline_probe(self, question: str) -> None:
+        self.console.print(
+            Panel(
+                tutor_markup(question),
+                title="[dim]Calibration[/dim]",
+                border_style="dim",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+        )
+
+    def render_baseline_row(self, result) -> None:
+        from core.baseline import BaselineConceptResult
+
+        if not isinstance(result, BaselineConceptResult):
+            return
+        color = "green" if result.score >= 4 else "yellow" if result.score >= 3 else "red"
+        skip = " · [dim]likely skip in study[/dim]" if result.skipped_study else ""
+        self.console.print(
+            f"  [{color}]{result.score}/5[/{color}]  {result.name}{skip}\n"
+        )
+
+    def render_baseline_complete(self, result) -> None:
+        from core.baseline import BaselineResult
+
+        if not isinstance(result, BaselineResult):
+            return
+        skipped = sum(1 for c in result.concepts if c.skipped_study)
+        self.console.print(
+            Panel(
+                f"Calibrated {len(result.concepts)} concepts "
+                f"({skipped} strong enough to de-prioritize).\n"
+                "[dim]Starting Socratic study…[/dim]",
+                title="[green]Baseline complete[/green]",
+                border_style="green",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+        )
+        self.console.print()
+
     def render_session_start(self, view: SessionView, *, resuming: bool) -> None:
         if resuming:
             self.console.print(
@@ -271,18 +329,76 @@ class QuestCliUi:
         )
 
     def render_completion(self, view: SessionView) -> None:
-        text = view.summary or view.tutor_message or "Session complete."
-        self.console.print(
-            Panel(
-                tutor_markup(text),
-                title="[green]Done[/green]",
-                title_align="left",
-                border_style="green",
-                box=box.ROUNDED,
-                padding=(0, 1),
+        if view.report and view.report.concepts:
+            self._render_session_report(view.report)
+        else:
+            text = view.summary or view.tutor_message or "Session complete."
+            self.console.print(
+                Panel(
+                    tutor_markup(text),
+                    title="[green]Done[/green]",
+                    title_align="left",
+                    border_style="green",
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                )
             )
-        )
         self.console.print()
+
+    def _render_session_report(self, report) -> None:
+        """Structured end-of-session report table."""
+        from core.session_report import SessionReport
+
+        if not isinstance(report, SessionReport):
+            report = SessionReport.model_validate(report)
+
+        table = Table(
+            title=f"Session report — {report.topic_display}",
+            box=box.ROUNDED,
+            border_style="green",
+            show_header=True,
+            header_style="bold",
+        )
+        table.add_column("Concept", style="bold", max_width=28)
+        table.add_column("Answers", justify="right", width=8)
+        table.add_column("Scores", width=14)
+        table.add_column("Last", justify="right", width=5)
+        table.add_column("Gaps", max_width=36)
+
+        for row in report.concepts:
+            scores = ", ".join(str(s) for s in row.scores) if row.scores else "—"
+            gap = row.gaps[0] if row.gaps else "—"
+            if len(gap) > 34:
+                gap = gap[:31] + "…"
+            color = (
+                "green"
+                if row.last_score >= 4
+                else "yellow"
+                if row.last_score >= 3
+                else "red"
+            )
+            table.add_row(
+                row.name[:28],
+                str(row.answer_turns),
+                scores,
+                f"[{color}]{row.last_score}/5[/{color}]",
+                gap,
+            )
+
+        self.console.print(table)
+        if report.top_gaps:
+            gaps_line = " · ".join(report.top_gaps[:3])
+            self.console.print(f"[dim]Top gaps:[/dim] {gaps_line}\n")
+        if report.narrative:
+            self.console.print(
+                Panel(
+                    tutor_markup(report.narrative),
+                    title="[dim]Notes[/dim]",
+                    border_style="dim",
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                )
+            )
 
     def render_help(self) -> None:
         table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
@@ -292,6 +408,7 @@ class QuestCliUi:
         table.add_row("/last", "full evaluator notes on your previous answer")
         table.add_row("/progress", "concept map + depth for this topic")
         table.add_row("/mastery", "all topics")
+        table.add_row("(shell)", "quest due — SM-2 review queue")
         self.console.print(Panel(table, title="Commands", border_style="dim"))
         self.console.print()
 

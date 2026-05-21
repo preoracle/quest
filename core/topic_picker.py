@@ -245,22 +245,22 @@ def _resolve_topic(
     line: str,
 ) -> PickerSelection | None:
     """Match number, exact id, or single search hit."""
-    query, replay = split_picker_input(line)
+    query, replay, baseline = split_picker_input(line)
     if not query:
         return None
 
     if query.isdigit() and len(topics) <= _FULL_LIST_MAX:
         i = int(query)
         if 1 <= i <= len(topics):
-            return PickerSelection(topics[i - 1][0], replay=replay)
+            return PickerSelection(topics[i - 1][0], replay=replay, baseline=baseline)
 
     for tid, _ in topics:
         if query == tid:
-            return PickerSelection(tid, replay=replay)
+            return PickerSelection(tid, replay=replay, baseline=baseline)
 
     filtered = _filter_topics(topics, query)
     if len(filtered) == 1:
-        return PickerSelection(filtered[0][0], replay=replay)
+        return PickerSelection(filtered[0][0], replay=replay, baseline=baseline)
     return None
 
 
@@ -333,6 +333,7 @@ def _pick_topic_plain() -> PickerSelection:
                 "[dim]At ›:[/dim] [bold #e6c364]3[/bold #e6c364][dim] pick #3 · [/dim]"
                 "[bold #e6c364]binary_search[/bold #e6c364][dim] by id · [/dim]"
                 "[bold #e6c364]binary_search --fresh[/bold #e6c364][dim] replay DAG · [/dim]"
+                "[bold #e6c364]TOPIC --baseline[/bold #e6c364][dim] calibrate · [/dim]"
                 "[bold #e6c364]new …[/bold #e6c364][dim] create · quit[/dim]\n"
             )
             if len(topics) <= _FULL_LIST_MAX:
@@ -359,9 +360,13 @@ def _pick_topic_plain() -> PickerSelection:
                 ui.console.print(
                     f"[dim]Replay mode[/dim] — full DAG for [bold]{resolved.topic_id}[/bold]\n"
                 )
+            if resolved.baseline:
+                ui.console.print(
+                    f"[dim]Baseline[/dim] — quick calibration for [bold]{resolved.topic_id}[/bold]\n"
+                )
             return resolved
 
-        query, _ = split_picker_input(raw)
+        query, _, _ = split_picker_input(raw)
         filtered = _filter_topics(topics, query)
         if not filtered:
             ui.console.print(f"[yellow]No match[/yellow] for {query!r}")
