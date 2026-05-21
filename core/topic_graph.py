@@ -7,6 +7,7 @@ import sqlite3
 
 from pydantic import BaseModel, Field
 
+from core.concept_pick import is_concept_mastered
 from core.topics import list_topics, load_topic
 from db import queries
 
@@ -89,7 +90,11 @@ def topic_mastery_summary(
         if not nodes:
             continue
         scores = [n.score_1_to_5 for n in nodes if n.num_evaluations > 0]
-        mastered = sum(1 for n in nodes if n.score_1_to_5 >= 4.0)
+        mastered = sum(
+            1
+            for n in nodes
+            if is_concept_mastered(n.score_1_to_5 / 5.0, n.num_evaluations)
+        )
         avg = sum(scores) / len(scores) if scores else 0.0
         out.append(
             {

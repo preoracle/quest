@@ -9,8 +9,9 @@ Local Socratic tutor: **one question at a time**, separate **evaluator** (1–5)
 1. Pick or create a topic.
 2. System selects next **concept** (mastery + SM-2, or full DAG with `--fresh`).
 3. Tutor asks → you answer → evaluator scores **that answer** → repeat.
-4. Concept “done” after score ≥ 4 on **3 turns** → next concept.
-5. `/quit` pauses; same topic resumes later.
+4. Concept “done” after score ≥ 4 on **3 turns on that concept** → next concept.
+5. Mastery in the DAG requires **3 evaluations** with average score ≥ 4/5.
+6. `/quit` pauses; same topic resumes later. Session ends when **all** concepts are mastered.
 
 ## Memory (important)
 

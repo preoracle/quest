@@ -30,8 +30,10 @@ def main() -> int:
         queries.get_or_create_user(conn, USER)
         concept_list = queries.upsert_topic_concepts(conn, topic_data)
         concepts = queries.get_topic_concepts(conn, TOPIC)
-        scores, reviews = queries.get_mastery_maps(conn, USER, TOPIC)
-        picked = pick_next_concept(concepts, TOPIC, scores, reviews)
+        scores, reviews, eval_counts = queries.get_mastery_maps(conn, USER, TOPIC)
+        picked = pick_next_concept(
+            concepts, TOPIC, scores, reviews, eval_counts=eval_counts,
+        )
         if not picked:
             print("FAIL: no concept to pick (all mastered?)")
             return 1

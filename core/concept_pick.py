@@ -6,6 +6,15 @@ import json
 from datetime import datetime, timezone
 
 MASTERY_THRESHOLD = 0.8  # normalized score in [0, 1]
+MIN_EVALUATIONS_FOR_MASTERY = 3
+
+
+def is_concept_mastered(score: float, num_evaluations: int) -> bool:
+    """True when the student has enough evaluations at or above the mastery bar."""
+    return (
+        num_evaluations >= MIN_EVALUATIONS_FOR_MASTERY
+        and score >= MASTERY_THRESHOLD
+    )
 
 
 def _parse_prereqs(raw: str | list | None, topic_id: str) -> list[str]:
@@ -67,32 +76,62 @@ def is_due(next_review_at: str | None, now: datetime | None = None) -> bool:
     return due <= now
 
 
+def _score_and_evals(
+    cid: str,
+    mastery_scores: dict[str, float],
+    eval_counts: dict[str, int],
+) -> tuple[float, int]:
+    return mastery_scores.get(cid, 0.0), eval_counts.get(cid, 0)
+
+
 def pick_next_concept(
     concepts: list[dict],
     topic_id: str,
     mastery_scores: dict[str, float],
     next_review: dict[str, str | None],
     *,
+    eval_counts: dict[str, int] | None = None,
     now: datetime | None = None,
 ) -> dict | None:
-    """Pick the weakest unmastered concept that is due and has prereqs satisfied.
+    """Pick the weakest unmastered concept with satisfied prerequisites.
 
-    Returns the concept row dict (id, name, ...) or None if all concepts are
-    mastered or none are eligible yet.
+    Unmastered concepts are always eligible (SM-2 due dates apply only after
+    mastery). Returns the concept row dict (id, name, ...) or None when every
+    concept in the topic is mastered.
     """
+    eval_counts = eval_counts or {}
     ordered = topological_concept_ids(concepts, topic_id)
     by_id = {c["id"]: c for c in concepts}
 
     for cid in ordered:
-        score = mastery_scores.get(cid, 0.0)
-        if score >= MASTERY_THRESHOLD:
-            continue
-        if not is_due(next_review.get(cid), now):
+        score, n = _score_and_evals(cid, mastery_scores, eval_counts)
+        if is_concept_mastered(score, n):
             continue
         prereqs = _parse_prereqs(by_id[cid].get("prerequisites_json"), topic_id)
-        if all(mastery_scores.get(p, 0.0) >= MASTERY_THRESHOLD for p in prereqs):
-            return by_id[cid]
+        if not all(
+            is_concept_mastered(*_score_and_evals(p, mastery_scores, eval_counts))
+            for p in prereqs
+        ):
+            continue
+        return by_id[cid]
     return None
+
+
+def topic_has_unmastered_concepts(
+    concepts: list[dict],
+    topic_id: str,
+    mastery_scores: dict[str, float],
+    *,
+    eval_counts: dict[str, int] | None = None,
+) -> bool:
+    """True if any concept in the topic is not yet mastered."""
+    eval_counts = eval_counts or {}
+    for c in concepts:
+        cid = c["id"]
+        score, n = _score_and_evals(cid, mastery_scores, eval_counts)
+        if not is_concept_mastered(score, n):
+            return True
+    return False
 
 
 def pick_next_concept_replay(

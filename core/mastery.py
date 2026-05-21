@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
+from core.concept_pick import is_concept_mastered
 from core.models import CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD, EvaluatorOutput
 from core.sm2 import Sm2State, sm2_schedule
 from db import queries
@@ -15,21 +16,25 @@ def apply_evaluation_to_mastery(
     user_id: str,
     topic_id: str,
     evaluation: EvaluatorOutput,
+    *,
+    current_concept_id: str | None = None,
 ) -> None:
-    """Update topic mastery and concept mastery (when confident) with SM-2."""
+    """Update topic mastery and the active concept (study uses current, not inferred)."""
     normalized = evaluation.normalized_score()
     quality = evaluation.score
 
     _upsert_with_sm2(conn, user_id, topic_id, normalized, quality)
 
+    concept_id = current_concept_id
     if (
-        evaluation.inferred_concept_id
+        not concept_id
+        and evaluation.inferred_concept_id
         and evaluation.inferred_concept_confidence
         >= CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD
     ):
-        _upsert_with_sm2(
-            conn, user_id, evaluation.inferred_concept_id, normalized, quality
-        )
+        concept_id = evaluation.inferred_concept_id
+    if concept_id:
+        _upsert_with_sm2(conn, user_id, concept_id, normalized, quality)
 
 
 def _upsert_with_sm2(
@@ -45,6 +50,11 @@ def _upsert_with_sm2(
 
     if existing is None:
         sm2 = sm2_schedule(quality, Sm2State(0, 2.5, 1))
+        n = 1
+        score = normalized_score
+        next_at = sm2.next_review_at.isoformat()
+        if not is_concept_mastered(score, n):
+            next_at = now
         conn.execute(
             """
             INSERT INTO mastery (
@@ -56,18 +66,22 @@ def _upsert_with_sm2(
             (
                 user_id,
                 concept_id,
-                normalized_score,
+                score,
                 sm2.ease_factor,
                 sm2.interval_days,
                 sm2.repetitions,
                 now,
-                sm2.next_review_at.isoformat(),
+                next_at,
             ),
         )
     else:
         old_score, n, ef, interval, reps = existing
-        new_score = (old_score * n + normalized_score) / (n + 1)
+        new_n = n + 1
+        new_score = (old_score * n + normalized_score) / new_n
         sm2 = sm2_schedule(quality, Sm2State(reps, ef, interval))
+        next_at = sm2.next_review_at.isoformat()
+        if not is_concept_mastered(new_score, new_n):
+            next_at = now
         conn.execute(
             """
             UPDATE mastery
@@ -78,12 +92,12 @@ def _upsert_with_sm2(
             """,
             (
                 new_score,
-                n + 1,
+                new_n,
                 sm2.ease_factor,
                 sm2.interval_days,
                 sm2.repetitions,
                 now,
-                sm2.next_review_at.isoformat(),
+                next_at,
                 user_id,
                 concept_id,
             ),

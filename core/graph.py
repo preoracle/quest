@@ -101,8 +101,12 @@ def build_quest_graph(
             completed = set(state.get("completed_concept_ids") or [])
             nxt = pick_next_concept_replay(concepts, topic_id, completed)
         else:
-            scores, reviews = queries.get_mastery_maps(conn, user_id, topic_id)
-            nxt = pick_next_concept(concepts, topic_id, scores, reviews)
+            scores, reviews, eval_counts = queries.get_mastery_maps(
+                conn, user_id, topic_id,
+            )
+            nxt = pick_next_concept(
+                concepts, topic_id, scores, reviews, eval_counts=eval_counts,
+            )
         if nxt is None:
             return {
                 "session_complete": True,
@@ -113,7 +117,7 @@ def build_quest_graph(
         prev = state.get("current_concept_id")
         reset_turns = prev != nxt["id"]
         scope = _concept_scope_from_list(state.get("concept_list") or [], nxt["id"])
-        return {
+        patch: dict = {
             "session_complete": False,
             "advance_concept": False,
             "current_concept_id": nxt["id"],
@@ -121,6 +125,9 @@ def build_quest_graph(
             "current_concept_scope": scope,
             "concept_turn_count": 0 if reset_turns else state.get("concept_turn_count", 0),
         }
+        if reset_turns:
+            patch["history"] = []
+        return patch
 
     def ask_question(state: QuestState) -> dict:
         """Generate the next Socratic question for the current concept."""
@@ -188,6 +195,7 @@ def build_quest_graph(
         )
         evaluation: EvaluatorOutput = evaluator.invoke(payload)
         turn_idx = state.get("turn_idx", 0)
+        concept_id = state.get("current_concept_id") or evaluation.inferred_concept_id
         queries.record_turn(
             conn,
             state["session_id"],
@@ -197,8 +205,10 @@ def build_quest_graph(
             evaluator_score=evaluation.score,
             evaluator_gaps=evaluation.gaps,
             evaluator_reasoning=evaluation.reasoning,
-            evaluator_concept_id=evaluation.inferred_concept_id,
-            evaluator_concept_confidence=evaluation.inferred_concept_confidence,
+            evaluator_concept_id=concept_id,
+            evaluator_concept_confidence=(
+                1.0 if state.get("current_concept_id") else evaluation.inferred_concept_confidence
+            ),
         )
         history = messages_from_dicts(state.get("history") or [])
         history.append(HumanMessage(content=state["user_input"]))
@@ -219,6 +229,7 @@ def build_quest_graph(
                 state["user_id"],
                 state["topic_id"],
                 EvaluatorOutput.model_validate(raw),
+                current_concept_id=state.get("current_concept_id"),
             )
         return {"concept_turn_count": state.get("concept_turn_count", 0) + 1}
 

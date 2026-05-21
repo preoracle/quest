@@ -417,11 +417,11 @@ def get_mastery_maps(
     conn: sqlite3.Connection,
     user_id: str,
     topic_id: str,
-) -> tuple[dict[str, float], dict[str, str | None]]:
-    """Return (concept_id -> normalized score, concept_id -> next_review_at)."""
+) -> tuple[dict[str, float], dict[str, str | None], dict[str, int]]:
+    """Return (scores, next_review_at, num_evaluations) keyed by concept_id."""
     rows = conn.execute(
         """
-        SELECT m.concept_id, m.score, m.next_review_at
+        SELECT m.concept_id, m.score, m.next_review_at, m.num_evaluations
         FROM mastery m
         JOIN concepts c ON c.id = m.concept_id
         WHERE m.user_id = ? AND c.topic = ? AND c.kind = 'concept'
@@ -430,7 +430,8 @@ def get_mastery_maps(
     ).fetchall()
     scores = {r["concept_id"]: float(r["score"]) for r in rows}
     reviews = {r["concept_id"]: r["next_review_at"] for r in rows}
-    return scores, reviews
+    eval_counts = {r["concept_id"]: int(r["num_evaluations"]) for r in rows}
+    return scores, reviews, eval_counts
 
 
 def get_turns_for_session(
