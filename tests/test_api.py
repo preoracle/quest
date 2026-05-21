@@ -121,3 +121,36 @@ def test_unknown_topic(client):
         json={"user_id": USER, "topic": "not_a_real_topic", "resume": False},
     )
     assert r.status_code == 404
+
+
+def test_topics_search_and_archive(client):
+    listed = client.get("/topics", params={"q": "binary"})
+    assert listed.status_code == 200
+    topics = listed.json()["topics"]
+    assert any(t["id"] == "binary_search" for t in topics)
+
+    patch = client.patch(
+        "/topics/binary_search",
+        json={"archived": True},
+    )
+    assert patch.status_code == 200
+
+    hidden = client.get("/topics")
+    assert "binary_search" not in [t["id"] for t in hidden.json()["topics"]]
+
+    shown = client.get("/topics", params={"include_archived": True})
+    row = next(t for t in shown.json()["topics"] if t["id"] == "binary_search")
+    assert row["archived"] is True
+
+    client.patch("/topics/binary_search", json={"archived": False})
+
+
+def test_delete_bundled_topic_forbidden(client):
+    r = client.delete("/topics/closures_in_javascript")
+    assert r.status_code == 403
+
+
+def test_concept_search(client):
+    r = client.get("/search/concepts", params={"q": "closure"})
+    assert r.status_code == 200
+    assert "hits" in r.json()
