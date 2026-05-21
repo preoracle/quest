@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { MessageCircleQuestion } from "lucide-react";
 
+/** Active Socratic question — visually distinct as current tutor ask. */
 export function QuestionHero({
   question,
   focus,
@@ -12,28 +12,25 @@ export function QuestionHero({
 
   return (
     <motion.article
-      className="question-card"
       key={question}
-      initial={reduce ? false : { opacity: 0, y: 20 }}
+      initial={reduce ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="flex items-start gap-3"
     >
-      <div className="mb-6 flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
-          <MessageCircleQuestion className="size-5" strokeWidth={1.75} />
-        </span>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-            Your question
-          </p>
-          {focus && (
-            <p className="mt-0.5 font-mono text-xs text-on-muted">{focus}</p>
-          )}
-        </div>
+      {/* Tutor avatar */}
+      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/15 ring-1 ring-accent/25">
+        <span className="text-[10px] font-bold text-accent">T</span>
       </div>
-      <p className="font-mono text-lg leading-[1.65] text-on-surface md:text-[1.35rem]">
-        {question}
-      </p>
+
+      <div className="flex-1 min-w-0">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent/70">
+          Tutor{focus ? ` · ${focus}` : ""}
+        </p>
+        <p className="text-[15px] leading-relaxed text-on-surface">
+          {question}
+        </p>
+      </div>
     </motion.article>
   );
 }

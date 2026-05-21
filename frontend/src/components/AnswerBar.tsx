@@ -1,6 +1,8 @@
 import { FormEvent } from "react";
 import { Loader2, Mic, Send } from "lucide-react";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
+import { ContentTrack } from "@/components/ContentColumn";
+import { gutterPx } from "@/lib/layout";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -37,9 +39,12 @@ export function AnswerBar({
   return (
     <form
       onSubmit={handleSubmit}
-      className="sticky bottom-0 border-t border-line/60 bg-void/90 px-5 py-5 backdrop-blur-xl lg:px-8"
+      className={cn(
+        "shrink-0 border-t border-line/20 py-section",
+        gutterPx,
+      )}
     >
-      <div className="mx-auto max-w-[42rem]">
+      <ContentTrack tier="reading">
         <div className="card flex gap-3 p-4">
           {supported && (
             <button
@@ -92,7 +97,7 @@ export function AnswerBar({
             </div>
           </div>
         </div>
-      </div>
+      </ContentTrack>
     </form>
   );
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
 import {
   fetchSession,
   fetchSessionTurns,
@@ -10,17 +9,22 @@ import {
 import type { SessionView } from "@/api/types";
 import { AnswerBar } from "@/components/AnswerBar";
 import { AppShell } from "@/components/AppShell";
+import { ContentTrack } from "@/components/ContentColumn";
 import { QuestionHero } from "@/components/QuestionHero";
-import { SessionReportView } from "@/components/SessionReportView";
+import { SessionCompletePanel } from "@/components/SessionCompletePanel";
+import { SessionScaffold } from "@/components/SessionScaffold";
 import { Skeleton } from "@/components/Skeleton";
 import { TurnHistory } from "@/components/TurnHistory";
 import { Button } from "@/components/ui/button";
+import { gutterPx, pagePy } from "@/lib/layout";
+import { cn } from "@/lib/utils";
 import {
   appendTurnResult,
   splitActiveQuestion,
   turnsToTranscript,
   type TranscriptEntry,
 } from "@/lib/transcript";
+import { setActiveSession } from "@/lib/activeSession";
 
 export function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -31,6 +35,7 @@ export function SessionPage() {
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [startingFresh, setStartingFresh] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnSeed, setTurnSeed] = useState(0);
 
@@ -43,6 +48,15 @@ export function SessionPage() {
         fetchSessionTurns(sessionId),
       ]);
       setSession(view);
+      if (!view.done && view.topic_id) {
+        setActiveSession({
+          sessionId: view.session_id,
+          topicDisplay: view.topic_display ?? view.topic_id,
+          topicId: view.topic_id,
+        });
+      } else {
+        setActiveSession(null);
+      }
       let entries = turnsToTranscript(turns);
       if (
         view.waiting_for_answer &&
@@ -96,6 +110,7 @@ export function SessionPage() {
       setSession(next);
       setAnswer("");
       if (next.done) {
+        setActiveSession(null);
         const turns = await fetchSessionTurns(sessionId);
         setTranscript(turnsToTranscript(turns));
       }
@@ -103,6 +118,19 @@ export function SessionPage() {
       setError(err instanceof Error ? err.message : "Could not submit");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function startFreshRun() {
+    if (!session?.topic_id) return;
+    setStartingFresh(true);
+    setError(null);
+    try {
+      const next = await startSession(session.topic_id, "replay");
+      navigate(`/session/${next.session_id}`, { replace: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start");
+      setStartingFresh(false);
     }
   }
 
@@ -114,123 +142,96 @@ export function SessionPage() {
       : null;
   const { history } = splitActiveQuestion(transcript, activeQuestion);
   const masteryScore = session?.last_evaluation?.score;
-  const isActive =
-    !!session && !session.done && session.waiting_for_answer;
+  const isActive = !!session && !session.done && session.waiting_for_answer;
+  const turnsAnswered = transcript.filter((e) => e.kind === "eval").length;
 
   return (
     <AppShell
-      topicLabel={session?.topic_display}
+      topicSession={
+        session?.topic_display
+          ? { name: session.topic_display, live: !!session && !session.done }
+          : undefined
+      }
       inSession={!!session && !session.done}
+      exitTo={session?.topic_id ? `/topics/${session.topic_id}` : "/topics"}
       masteryScore={masteryScore}
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {loading && (
-          <div className="space-y-6 px-5 py-8 lg:px-8">
-            <Skeleton className="h-48 w-full max-w-[44rem] rounded-xl" />
-            <Skeleton className="h-24 w-full max-w-[44rem]" />
-          </div>
-        )}
+      {loading && (
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", gutterPx, pagePy)}>
+          <ContentTrack tier="reading" className="flex flex-col gap-section">
+            <Skeleton className="h-24 w-full rounded-2xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </ContentTrack>
+        </div>
+      )}
 
-        {error && (
-          <div className="px-5 py-8 lg:px-8">
-            <div className="card max-w-[44rem] border-score-low/30 p-6 text-sm">
-              <p className="text-score-low">{error}</p>
-              <Link to="/topics" className="mt-4 inline-block text-accent">
-                ← Back to topics
-              </Link>
-            </div>
-          </div>
-        )}
+      {error && !session && !loading && (
+        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, pagePy)}>
+          <ContentTrack tier="reading">
+            <p className="text-score-low">{error}</p>
+            <Link to="/topics" className="mt-4 inline-block text-accent">
+              ← Topics
+            </Link>
+          </ContentTrack>
+        </div>
+      )}
 
-        {session && !loading && !error && session.done && (
-          <div className="flex-1 overflow-y-auto px-5 py-8 lg:px-8">
-            <div className="mx-auto max-w-[44rem] space-y-8">
-              <div className="flex items-center gap-3">
-                <span className="flex size-12 items-center justify-center rounded-xl bg-score-good/15 text-score-good">
-                  <CheckCircle2 className="size-6" />
-                </span>
-                <div>
-                  <h1 className="font-display text-2xl font-semibold text-on-surface">
-                    Session complete
-                  </h1>
-                  <p className="text-sm text-on-muted">{session.topic_display}</p>
-                </div>
+      {session && !loading && session.done && (
+        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, pagePy)}>
+          <ContentTrack tier="reading">
+            <SessionCompletePanel
+              session={session}
+              onStartFresh={startFreshRun}
+              startingFresh={startingFresh}
+            />
+          </ContentTrack>
+        </div>
+      )}
+
+      {session && !loading && !session.done && (
+        <SessionScaffold
+          turnsAnswered={turnsAnswered}
+          scrollTrigger={turnSeed}
+          pinnedQuestion={
+            activeQuestion ? (
+              <QuestionHero question={activeQuestion} focus={session.focus} />
+            ) : (
+              <div className="rounded-2xl border border-line/50 bg-surface/30 px-5 py-4 text-sm">
+                <p className="font-medium text-on-surface">Session paused</p>
+                <p className="mt-2 text-on-muted">
+                  Start a new session to get a fresh question.
+                </p>
+                <Button
+                  className="mt-4"
+                  size="sm"
+                  disabled={submitting}
+                  onClick={() => void startFreshRun()}
+                >
+                  New session
+                </Button>
               </div>
-              {session.report ? (
-                <SessionReportView report={session.report} />
-              ) : (
-                <p className="text-on-muted">{session.summary ?? "Well done."}</p>
+            )
+          }
+          scroll={
+            <>
+              <TurnHistory entries={history} />
+              {error && (
+                <p className="mt-3 text-xs text-score-low">{error}</p>
               )}
-              <div className="flex flex-wrap gap-3">
-                <Button asChild>
-                  <Link to="/topics">More topics</Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link to="/mastery">View progress</Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {session && !loading && !error && !session.done && (
-          <>
-            <div className="shrink-0 px-5 pt-6 pb-4 lg:px-8">
-              <div className="mx-auto max-w-[44rem]">
-                {activeQuestion ? (
-                  <QuestionHero
-                    question={activeQuestion}
-                    focus={session.focus}
-                  />
-                ) : (
-                  <div className="card border-accent/30 bg-accent-dim/30 p-5">
-                    <p className="text-sm font-medium text-on-surface">
-                      Session paused or out of sync
-                    </p>
-                    <p className="mt-2 text-sm text-on-muted">
-                      This can happen after calibration or an interrupted session.
-                      Start a new session to get a fresh Socratic question.
-                    </p>
-                    <Button
-                      className="mt-4"
-                      size="sm"
-                      disabled={submitting}
-                      onClick={() => {
-                        setSubmitting(true);
-                        void startSession(session.topic_id, "study")
-                          .then((s) =>
-                            navigate(`/session/${s.session_id}`, { replace: true }),
-                          )
-                          .catch((e) =>
-                            setError(e instanceof Error ? e.message : "Could not start"),
-                          )
-                          .finally(() => setSubmitting(false));
-                      }}
-                    >
-                      New session
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 lg:px-8">
-              <div className="mx-auto max-w-[44rem] pb-4">
-                <TurnHistory entries={history} />
-              </div>
-            </div>
-
-            {isActive && (
+            </>
+          }
+          pinnedBottom={
+            isActive ? (
               <AnswerBar
                 value={answer}
                 onChange={setAnswer}
                 onSubmit={() => void onSubmit()}
                 submitting={submitting}
               />
-            )}
-          </>
-        )}
-      </div>
+            ) : undefined
+          }
+        />
+      )}
     </AppShell>
   );
 }
