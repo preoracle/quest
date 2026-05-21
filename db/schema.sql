@@ -54,5 +54,14 @@ CREATE TABLE IF NOT EXISTS turns (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS topic_metadata (
+  topic_id TEXT PRIMARY KEY,
+  archived_at TEXT,
+  pinned_at TEXT,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  user_created INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_idx);
 CREATE INDEX IF NOT EXISTS idx_mastery_user ON mastery(user_id);

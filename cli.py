@@ -8,6 +8,7 @@ import sys
 from core.paths import env_file, load_quest_env
 from core.session import DEFAULT_USER_ID, EXIT_COMMANDS, run_session
 from core.version import __version__
+from core.topic_cli import cmd_topic_archive, cmd_topic_rename, cmd_topic_rm
 from core.topic_picker import create_topic_from_goal, pick_topic_interactive
 from core.topics import list_topics, load_topic
 from db import queries
@@ -217,10 +218,22 @@ def main(argv: list[str] | None = None) -> int:
     if args[0] == "topic":
         if len(args) >= 2 and args[1] == "new":
             return cmd_topic_new(args[2:])
+        if len(args) >= 2 and args[1] == "archive":
+            return cmd_topic_archive(args[2:], archived=True)
+        if len(args) >= 2 and args[1] == "unarchive":
+            return cmd_topic_archive(args[2:], archived=False)
+        if len(args) >= 2 and args[1] == "rename":
+            return cmd_topic_rename(args[2:])
+        if len(args) >= 2 and args[1] in ("rm", "delete"):
+            return cmd_topic_rm(args[2:])
         print(
             "Usage: python cli.py topic new \"what you want to learn\"\n"
             "       python cli.py topic new --yes \"...\"   # skip confirm\n"
-            "       python cli.py topic new --force \"...\" # overwrite YAML",
+            "       python cli.py topic new --force \"...\" # overwrite YAML\n"
+            "       python cli.py topic archive TOPIC_ID\n"
+            "       python cli.py topic unarchive TOPIC_ID\n"
+            "       python cli.py topic rename OLD_ID NEW_ID\n"
+            "       python cli.py topic rm TOPIC_ID [--yes]",
             file=sys.stderr,
         )
         return 2

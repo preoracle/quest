@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+_MAX_INTERVAL_DAYS = 3650
+
 
 @dataclass(frozen=True)
 class Sm2State:
@@ -56,9 +58,10 @@ def sm2_schedule(
         elif reps == 1:
             interval = 6
         else:
-            interval = max(1, round(interval * ease))
+            interval = min(_MAX_INTERVAL_DAYS, max(1, round(interval * ease)))
         reps += 1
 
+    interval = min(_MAX_INTERVAL_DAYS, max(1, interval))
     reviewed = reviewed_at or datetime.now(timezone.utc)
     next_at = reviewed + timedelta(days=interval)
     return Sm2Result(

@@ -45,6 +45,25 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'study'"
         )
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if "topic_metadata" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE topic_metadata (
+              topic_id TEXT PRIMARY KEY,
+              archived_at TEXT,
+              pinned_at TEXT,
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              user_created INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def init_db(db_path: Path | str | None = None) -> Path:
@@ -674,3 +693,164 @@ def get_mastery_for_user(
         )
         for r in rows
     ]
+
+
+def get_topic_metadata(
+    conn: sqlite3.Connection,
+    topic_id: str,
+) -> dict[str, Any] | None:
+    """Return topic_metadata row as a dict, or None if unset."""
+    row = conn.execute(
+        """
+        SELECT topic_id, archived_at, pinned_at, tags_json, user_created, updated_at
+        FROM topic_metadata WHERE topic_id = ?
+        """,
+        (topic_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    tags: list[str] = []
+    if row["tags_json"]:
+        try:
+            parsed = json.loads(row["tags_json"])
+            if isinstance(parsed, list):
+                tags = [str(t) for t in parsed]
+        except json.JSONDecodeError:
+            tags = []
+    return {
+        "topic_id": row["topic_id"],
+        "archived_at": row["archived_at"],
+        "pinned_at": row["pinned_at"],
+        "tags": tags,
+        "user_created": bool(row["user_created"]),
+        "updated_at": row["updated_at"],
+    }
+
+
+def list_topic_metadata(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    """Return all topic_metadata rows keyed by topic_id."""
+    rows = conn.execute(
+        """
+        SELECT topic_id, archived_at, pinned_at, tags_json, user_created, updated_at
+        FROM topic_metadata
+        """
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        meta = get_topic_metadata(conn, row["topic_id"])
+        if meta:
+            out[row["topic_id"]] = meta
+    return out
+
+
+def upsert_topic_metadata(
+    conn: sqlite3.Connection,
+    topic_id: str,
+    *,
+    archived: bool | None = None,
+    pinned: bool | None = None,
+    tags: list[str] | None = None,
+    user_created: bool | None = None,
+) -> dict[str, Any]:
+    """Create or update topic_metadata. Returns the merged row."""
+    existing = get_topic_metadata(conn, topic_id)
+    archived_at = existing["archived_at"] if existing else None
+    pinned_at = existing["pinned_at"] if existing else None
+    tags_json = json.dumps(existing["tags"] if existing else [])
+    uc = int(existing["user_created"]) if existing else 0
+
+    if archived is True:
+        archived_at = _utc_now()
+    elif archived is False:
+        archived_at = None
+    if pinned is True:
+        pinned_at = _utc_now()
+    elif pinned is False:
+        pinned_at = None
+    if tags is not None:
+        tags_json = json.dumps(tags)
+    if user_created is not None:
+        uc = int(user_created)
+
+    now = _utc_now()
+    conn.execute(
+        """
+        INSERT INTO topic_metadata (
+            topic_id, archived_at, pinned_at, tags_json, user_created, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(topic_id) DO UPDATE SET
+            archived_at = excluded.archived_at,
+            pinned_at = excluded.pinned_at,
+            tags_json = excluded.tags_json,
+            user_created = MAX(topic_metadata.user_created, excluded.user_created),
+            updated_at = excluded.updated_at
+        """,
+        (topic_id, archived_at, pinned_at, tags_json, uc, now),
+    )
+    conn.commit()
+    result = get_topic_metadata(conn, topic_id)
+    assert result is not None
+    return result
+
+
+def delete_topic_metadata(conn: sqlite3.Connection, topic_id: str) -> None:
+    """Remove topic_metadata row for a topic."""
+    conn.execute("DELETE FROM topic_metadata WHERE topic_id = ?", (topic_id,))
+    conn.commit()
+
+
+def delete_concepts_for_topic(conn: sqlite3.Connection, topic_id: str) -> int:
+    """Delete all concept rows (topic + concepts) for a topic. Returns rows removed."""
+    cur = conn.execute("DELETE FROM concepts WHERE topic = ?", (topic_id,))
+    conn.commit()
+    return int(cur.rowcount or 0)
+
+
+def migrate_topic_id(
+    conn: sqlite3.Connection,
+    old_id: str,
+    new_id: str,
+) -> None:
+    """Rename a topic id across concepts, mastery, sessions, and metadata."""
+    if old_id == new_id:
+        return
+    prefix_old = f"{old_id}:"
+    prefix_new = f"{new_id}:"
+    conn.execute(
+        """
+        UPDATE concepts SET id = ?, topic = ?
+        WHERE id = ? AND kind = 'topic'
+        """,
+        (new_id, new_id, old_id),
+    )
+    rows = conn.execute(
+        "SELECT id FROM concepts WHERE topic = ? AND kind = 'concept'",
+        (old_id,),
+    ).fetchall()
+    for row in rows:
+        old_cid = row["id"]
+        if old_cid.startswith(prefix_old):
+            local = old_cid[len(prefix_old) :]
+            new_cid = namespace_concept_id(new_id, local)
+            conn.execute(
+                """
+                UPDATE concepts SET id = ?, topic = ? WHERE id = ?
+                """,
+                (new_cid, new_id, old_cid),
+            )
+    conn.execute(
+        """
+        UPDATE mastery SET concept_id = REPLACE(concept_id, ?, ?)
+        WHERE concept_id LIKE ?
+        """,
+        (prefix_old, prefix_new, f"{prefix_old}%"),
+    )
+    conn.execute(
+        "UPDATE sessions SET topic = ? WHERE topic = ?",
+        (new_id, old_id),
+    )
+    conn.execute(
+        "UPDATE topic_metadata SET topic_id = ? WHERE topic_id = ?",
+        (new_id, old_id),
+    )
+    conn.commit()

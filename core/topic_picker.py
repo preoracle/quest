@@ -13,6 +13,7 @@ from rich.table import Table
 from core.picker_types import PickerSelection, REPLAY_FLAGS, split_picker_input
 from core.topics import list_topics
 from core.ui import _make_prompt_session
+from db import queries
 
 EXIT_COMMANDS = {":quit", ":q", ":exit", "quit", "exit"}
 NEW_COMMANDS = {"new", "n", "+", "create"}
@@ -237,6 +238,11 @@ def create_topic_from_goal(
         return None
 
     ui.console.print(f"\n[green]Wrote[/green] {path}")
+    from core.topic_lifecycle import mark_topic_user_created
+
+    queries.init_db()
+    with queries.get_connection() as conn:
+        mark_topic_user_created(conn, data["topic"])
     return data["topic"]
 
 
