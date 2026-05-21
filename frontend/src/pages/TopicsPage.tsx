@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, Search } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 import { fetchDue, fetchTopics, startSession } from "@/api/client";
 import type { StartMode } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
-import { CreateTopicSection } from "@/components/CreateTopicSection";
-import { PageHeader } from "@/components/PageHeader";
+import { CreateTopicPanel } from "@/components/CreateTopicPanel";
+import { FilterChips } from "@/components/FilterChips";
+import { PageScaffold } from "@/components/PageScaffold";
 import { TopicListSkeleton } from "@/components/Skeleton";
-import { TopicCard } from "@/components/TopicCard";
+import { TopicRow } from "@/components/TopicRow";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { createPanelSlot, listGap, sectionGap, sectionLabel } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import {
   filterTopics,
@@ -18,6 +23,11 @@ import {
   recordTopicUse,
   type TopicFilter,
 } from "@/lib/topicActivity";
+
+const LIBRARY_CAP = 12;
+const SEARCH_DEBOUNCE_MS = 300;
+
+const VALID_FILTERS: TopicFilter[] = ["all", "due", "in_progress", "new"];
 
 const FILTERS: { id: TopicFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -29,31 +39,68 @@ const FILTERS: { id: TopicFilter; label: string }[] = [
 export function TopicsPage() {
   const navigate = useNavigate();
   const reduce = useReducedMotion();
-  const [topics, setTopics] = useState<ReturnType<typeof rankTopics>>([]);
-  const [due, setDue] = useState(0);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<TopicFilter>("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [starting, setStarting] = useState<string | null>(null);
+  const [showAllLibrary, setShowAllLibrary] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
-  function reloadCatalog() {
-    setLoading(true);
-    Promise.all([fetchTopics(), fetchDue()])
-      .then(([t, d]) => {
-        setTopics(rankTopics(t));
-        setDue(d.items.length);
-      })
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Could not reach API"),
-      )
-      .finally(() => setLoading(false));
+  // URL-encoded persistent state
+  const urlQuery = searchParams.get("q") ?? "";
+  const rawFilter = searchParams.get("filter") ?? "all";
+  const filter: TopicFilter = (VALID_FILTERS.includes(rawFilter as TopicFilter) ? rawFilter : "all") as TopicFilter;
+  const showArchived = searchParams.get("archived") === "1";
+
+  // Local input state (instant feedback), syncs to URL with debounce
+  const [inputQuery, setInputQuery] = useState(urlQuery);
+  const query = urlQuery; // API uses URL value
+
+  function handleQueryInput(q: string) {
+    setInputQuery(q);
+    clearTimeout((handleQueryInput as { _t?: ReturnType<typeof setTimeout> })._t);
+    (handleQueryInput as { _t?: ReturnType<typeof setTimeout> })._t = setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (q) next.set("q", q); else next.delete("q");
+        return next;
+      }, { replace: true });
+    }, SEARCH_DEBOUNCE_MS);
   }
 
-  useEffect(() => {
-    reloadCatalog();
-  }, []);
+  function setFilter(f: TopicFilter) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (f === "all") next.delete("filter"); else next.set("filter", f);
+      return next;
+    }, { replace: true });
+  }
+
+  function setShowArchived(v: boolean) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set("archived", "1"); else next.delete("archived");
+      return next;
+    }, { replace: true });
+  }
+
+  const { data: topicsData, isLoading: topicsLoading, refetch: refetchTopics } = useQuery({
+    queryKey: ["topics", query, showArchived],
+    queryFn: () => fetchTopics({ q: query, includeArchived: showArchived }),
+    staleTime: 20_000,
+  });
+
+  const { data: dueData } = useQuery({
+    queryKey: ["due"],
+    queryFn: () => fetchDue(),
+    staleTime: 60_000,
+  });
+
+  const topics = useMemo(() => rankTopics(topicsData ?? []), [topicsData]);
+  const due = dueData?.items.length ?? 0;
+  const loading = topicsLoading;
+
+  function reloadCatalog() {
+    refetchTopics();
+  }
 
   const filtered = useMemo(
     () => filterTopics(topics, filter, query),
@@ -67,161 +114,173 @@ export function TopicsPage() {
     return groupTopics(filtered);
   }, [filtered, filter, query]);
 
+  const libraryVisible = useMemo(() => {
+    const lib = sections.library;
+    if (showAllLibrary || lib.length <= LIBRARY_CAP) return lib;
+    return lib.slice(0, LIBRARY_CAP);
+  }, [sections.library, showAllLibrary]);
+
+  const totalVisible =
+    sections.pickUp.length + sections.explore.length + libraryVisible.length;
+
+  const filterOptions = FILTERS.map((f) =>
+    f.id === "due" ? { ...f, count: due } : f,
+  );
+
   async function begin(topicId: string, mode: StartMode) {
     setStarting(topicId);
-    setError(null);
     recordTopicUse(topicId);
     try {
       const session = await startSession(topicId, mode);
-      navigate(`/session/${session.session_id}`);
+      if (session.done) {
+        const fresh = await startSession(topicId, "replay");
+        navigate(`/session/${fresh.session_id}`);
+      } else {
+        navigate(`/session/${session.session_id}`);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start session");
+      toast.error(e instanceof Error ? e.message : "Could not start session");
     } finally {
       setStarting(null);
     }
   }
 
-  function renderTopic(t: (typeof topics)[0], i: number) {
-    return (
-      <motion.div
-        key={t.id}
-        initial={reduce ? false : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: i * 0.03 }}
-      >
-        <TopicCard
-          id={t.id}
-          displayName={t.display_name}
-          hook={t.hook}
-          conceptCount={t.concept_count}
-          previewConcepts={t.preview_concepts}
-          started={t.started}
-          masteredCount={t.mastered_count}
-          avgScore={t.avg_score_1_to_5}
-          dueCount={t.due_count}
-          busy={starting === t.id}
-          expanded={expandedId === t.id}
-          onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
-          onStart={(mode) => begin(t.id, mode)}
+  const toolbar = (
+    <div className={cn("flex flex-col", sectionGap)}>
+      <div className="flex items-center gap-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-on-muted" />
+          <Input
+            type="search"
+            value={inputQuery}
+            onChange={(e) => handleQueryInput(e.target.value)}
+            placeholder="Search topics"
+            className="h-11 rounded-xl border-line/50 bg-surface/30 pl-10"
+            aria-label="Search topics"
+          />
+        </div>
+        <Button
+          type="button"
+          variant={showCreate ? "secondary" : "outline"}
+          className="h-11 shrink-0 gap-2 px-4"
+          onClick={() => setShowCreate((v) => !v)}
+        >
+          <Plus className="size-4" />
+          <span className="hidden sm:inline">New topic</span>
+          <span className="sm:hidden">New</span>
+        </Button>
+      </div>
+
+      <div className={cn(showCreate ? createPanelSlot : undefined, "transition-all")}>
+        <CreateTopicPanel
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={reloadCatalog}
         />
-      </motion.div>
-    );
-  }
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 overflow-x-auto">
+          <FilterChips
+            options={filterOptions}
+            value={filter}
+            onChange={setFilter}
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-4 text-sm text-on-muted">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="size-3.5 rounded border-line accent-accent"
+            />
+            Archived
+          </label>
+          {!loading && (
+            <span className="font-mono text-xs tabular-nums text-on-muted/70">
+              {totalVisible} topics
+            </span>
+          )}
+        </div>
+      </div>
+
+    </div>
+  );
 
   return (
     <AppShell>
-      <div className="flex flex-1 flex-col px-5 py-8 lg:px-8">
-        <PageHeader
-          title="Topics"
-          description="Each card previews what you'll study. Continue is the default; expand for other modes."
-        />
-
-        <CreateTopicSection onCreated={reloadCatalog} />
-
-        {due > 0 && (
-          <Link
-            to="/due"
-            className="card-hover mb-6 flex items-center justify-between gap-4 border-accent/20 bg-accent-dim p-4"
-          >
-            <span className="text-sm">
-              <span className="font-semibold text-accent">{due}</span>
-              <span className="text-on-muted"> concepts due for spaced review</span>
-            </span>
-            <span className="text-xs font-medium text-accent">Review →</span>
-          </Link>
-        )}
-
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative max-w-md flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-muted" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search topics or concepts…"
-              className="pl-10"
-              aria-label="Search topics"
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  filter === id
-                    ? "bg-accent-dim text-accent ring-1 ring-accent/30"
-                    : "bg-surface-muted text-on-muted hover:text-on-surface",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-6 flex items-start gap-3 rounded-lg border border-score-low/30 bg-score-low/10 p-4 text-sm text-score-low">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            {error}
-          </div>
-        )}
-
+      <PageScaffold toolbar={toolbar} tier="catalog">
         {loading ? (
           <TopicListSkeleton />
+        ) : filtered.length === 0 ? (
+          <p className="py-page text-center text-sm text-on-muted">
+            No topics match your search or filter.
+          </p>
         ) : (
-          <div className="space-y-10">
+          <div className={cn("flex flex-col", sectionGap)}>
             {sections.pickUp.length > 0 && (
-              <section>
-                <SectionHeading
-                  title="Pick up"
-                  hint="Due for review, recently studied, or in progress"
-                />
-                <div className="space-y-3">
-                  {sections.pickUp.map((t, i) => renderTopic(t, i))}
-                </div>
-              </section>
+              <Section topics={sections.pickUp} label="Pick up" reduce={reduce} starting={starting} onContinue={begin} />
             )}
-
             {sections.explore.length > 0 && (
-              <section>
-                <SectionHeading title="Explore" hint="Topics you haven't started yet" />
-                <div className="space-y-3">
-                  {sections.explore.map((t, i) => renderTopic(t, i))}
-                </div>
-              </section>
+              <Section topics={sections.explore} label="Explore" reduce={reduce} starting={starting} onContinue={begin} />
             )}
-
-            {sections.library.length > 0 && (
-              <section>
-                <SectionHeading title="Library" hint="Everything else" />
-                <div className="space-y-3">
-                  {sections.library.map((t, i) => renderTopic(t, i))}
-                </div>
-              </section>
-            )}
-
-            {filtered.length === 0 && (
-              <p className="py-12 text-center text-sm text-on-muted">
-                No topics match your search or filter.
-              </p>
+            {libraryVisible.length > 0 && (
+              <>
+                <Section topics={libraryVisible} label="Library" reduce={reduce} starting={starting} onContinue={begin} />
+                {sections.library.length > LIBRARY_CAP && !showAllLibrary && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLibrary(true)}
+                    className="text-sm font-medium text-accent hover:underline"
+                  >
+                    Show all {sections.library.length}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
-      </div>
+      </PageScaffold>
     </AppShell>
   );
 }
 
-function SectionHeading({ title, hint }: { title: string; hint: string }) {
+function Section({
+  label,
+  topics,
+  reduce,
+  starting,
+  onContinue,
+}: {
+  label: string;
+  topics: ReturnType<typeof rankTopics>;
+  reduce: boolean | null;
+  starting: string | null;
+  onContinue: (id: string, mode: StartMode) => void;
+}) {
   return (
-    <div className="mb-4">
-      <h2 className="font-mono text-xs font-semibold uppercase tracking-widest text-accent">
-        {title}
+    <section>
+      <h2 className={cn(sectionLabel, "mb-1.5")}>
+        {label}
+        <span className="font-normal text-on-muted/50">{topics.length}</span>
       </h2>
-      <p className="mt-1 text-xs text-on-muted">{hint}</p>
-    </div>
+      <div className={cn("flex flex-col", listGap)}>
+        {topics.map((t, i) => (
+          <motion.div
+            key={t.id}
+            initial={reduce ? false : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: Math.min(i * 0.02, 0.12) }}
+          >
+            <TopicRow
+              topic={t}
+              busy={starting === t.id}
+              onContinue={() => onContinue(t.id, "resume")}
+            />
+          </motion.div>
+        ))}
+      </div>
+    </section>
   );
 }
