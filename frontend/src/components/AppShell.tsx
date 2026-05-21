@@ -1,54 +1,84 @@
+import { Fragment, useEffect, useState } from "react";
+import { AuthControls } from "@/components/AuthControls";
+import { MobileNav } from "@/components/MobileNav";
 import { QuestLogo } from "@/components/QuestLogo";
-import { Calendar, Home, LayoutGrid, TrendingUp } from "lucide-react";
+import { BarChart2, BookOpen, Calendar, LayoutGrid, Radio } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { MasteryTicks } from "@/components/MasteryTicks";
+import { gutterPx } from "@/lib/layout";
 import { cn } from "@/lib/utils";
+import { getActiveSession, type ActiveSessionInfo } from "@/lib/activeSession";
 
 const NAV = [
-  { to: "/", label: "Home", icon: Home, exact: true },
+  { to: "/dashboard", label: "Dashboard", icon: BookOpen },
   { to: "/topics", label: "Topics", icon: LayoutGrid },
-  { to: "/due", label: "Review", icon: Calendar },
-  { to: "/mastery", label: "Progress", icon: TrendingUp },
+  { to: "/due", label: "Due", icon: Calendar },
+  { to: "/mastery", label: "Progress", icon: BarChart2 },
 ] as const;
+
+const PAGE_TITLE: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/topics": "Topics",
+  "/due": "Due for review",
+  "/mastery": "Progress",
+};
 
 export function AppShell({
   children,
-  topicLabel,
+  breadcrumb,
+  topicSession,
   inSession,
+  exitTo,
   masteryScore,
 }: {
   children: React.ReactNode;
-  topicLabel?: string;
+  breadcrumb?: Array<{ label: string; to?: string }>;
+  topicSession?: { name: string; live?: boolean };
   inSession?: boolean;
+  exitTo?: string;
   masteryScore?: number;
 }) {
   const { pathname } = useLocation();
+  const [activeSession, setActiveSessionState] = useState<ActiveSessionInfo | null>(getActiveSession);
 
-  function isActive(to: string, exact?: boolean) {
-    if (exact) return pathname === to;
+  useEffect(() => {
+    function sync() { setActiveSessionState(getActiveSession()); }
+    window.addEventListener("quest:session-changed", sync);
+    return () => window.removeEventListener("quest:session-changed", sync);
+  }, []);
+
+  const onSessionPage = pathname.startsWith("/session/");
+  const showSessionBanner = !!activeSession && !onSessionPage && !inSession;
+
+  const pageTitle =
+    !breadcrumb && !topicSession ? (PAGE_TITLE[pathname] ?? null) : null;
+
+  function isActive(to: string) {
     return pathname === to || pathname.startsWith(`${to}/`);
   }
 
   return (
-    <div className="noise-overlay mesh-bg min-h-screen">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1320px]">
-        <aside className="hidden w-rail shrink-0 flex-col border-r border-line/60 px-4 py-8 lg:flex">
-          <Link to="/" className="group pl-1">
+    <div className="noise-overlay mesh-bg flex h-dvh w-full overflow-hidden">
+      <div className="flex h-full min-h-0 w-full flex-1">
+
+        {/* Sidebar */}
+        <aside className="hidden h-full w-rail shrink-0 flex-col border-r border-white/4 px-4 py-6 backdrop-blur-2xl lg:flex" style={{ background: "linear-gradient(to right, rgb(10 10 16 / 0.85), rgb(8 8 14 / 0.78))" }}>
+          <Link to="/dashboard" className="pl-1">
             <QuestLogo size="md" />
           </Link>
-          <p className="mt-3 pl-1 text-xs leading-relaxed text-on-muted">
-            Think. Answer. Improve.
+          <p className="mt-2 pl-1 text-[11px] leading-relaxed text-on-muted/60">
+            Master anything.
           </p>
-          <nav className="mt-10 flex flex-col gap-1">
-            {NAV.map(({ to, label, icon: Icon, ...rest }) => (
+          <nav className="mt-8 flex flex-col gap-0.5">
+            {NAV.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
                 to={to}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                  isActive(to, "exact" in rest && rest.exact)
-                    ? "bg-accent-dim font-medium text-accent"
-                    : "text-on-muted hover:bg-surface-muted hover:text-on-surface",
+                  isActive(to)
+                    ? "bg-accent/10 font-medium text-accent shadow-[0_0_0_1px_rgb(212_168_83/0.15)_inset]"
+                    : "text-on-muted hover:bg-surface-muted/60 hover:text-on-surface",
                 )}
               >
                 <Icon className="size-4 shrink-0 opacity-80" />
@@ -58,63 +88,106 @@ export function AppShell({
           </nav>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-40 border-b border-line/60 bg-void/80 backdrop-blur-xl">
-            <div className="flex h-14 items-center justify-between gap-4 px-5 lg:px-8">
-              <Link to="/" className="lg:hidden">
+        {/* Main column */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+
+          {/* Header — clean flat bar */}
+          <header
+            className={cn("z-40 shrink-0 header-glass", gutterPx)}
+          >
+            <div className="flex h-14 items-center gap-3">
+              <Link to="/dashboard" className="shrink-0 lg:hidden" aria-label="Dashboard">
                 <QuestLogo size="sm" />
               </Link>
 
-              <div className="flex min-w-0 flex-1 items-center justify-center gap-2 lg:justify-start">
-                {topicLabel && (
-                  <span className="truncate rounded-md bg-surface-muted px-2.5 py-1 font-mono text-xs text-on-muted">
-                    {topicLabel}
-                  </span>
+              <div className="min-w-0 flex-1">
+                {breadcrumb && breadcrumb.length > 0 && (
+                  <nav
+                    className="flex min-w-0 items-center gap-1.5 text-sm text-on-muted"
+                    aria-label="Breadcrumb"
+                  >
+                    {breadcrumb.map((crumb, i) => (
+                      <Fragment key={crumb.label}>
+                        {i > 0 && <span className="select-none text-on-muted/35">/</span>}
+                        {crumb.to ? (
+                          <Link
+                            to={crumb.to}
+                            className="shrink-0 transition-colors hover:text-accent"
+                          >
+                            {crumb.label}
+                          </Link>
+                        ) : (
+                          <span className="truncate font-medium text-on-surface">
+                            {crumb.label}
+                          </span>
+                        )}
+                      </Fragment>
+                    ))}
+                  </nav>
                 )}
-                {inSession && (
-                  <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-accent-dim px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent sm:flex">
-                    <span className="size-1.5 animate-pulse rounded-full bg-accent" />
-                    Live
+
+                {topicSession && (
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-on-surface">
+                      {topicSession.name}
+                    </span>
+                    {topicSession.live && (
+                      <span className="shrink-0 rounded-full bg-accent-dim px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                        Live
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {pageTitle && (
+                  <span className="text-sm font-semibold text-on-surface">
+                    {pageTitle}
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-2 sm:gap-3">
                 {inSession && (
                   <Link
-                    to="/topics"
-                    className="hidden text-xs font-medium text-on-muted hover:text-accent sm:inline"
+                    to={exitTo ?? "/topics"}
+                    className="hidden text-xs font-medium text-on-muted hover:text-on-surface sm:inline"
                   >
-                    Leave session
+                    ← Leave
                   </Link>
                 )}
                 {masteryScore !== undefined && masteryScore > 0 && (
                   <MasteryTicks score={masteryScore} />
                 )}
-                <nav className="flex gap-1 lg:hidden">
-                  {NAV.slice(1).map(({ to, label }) => (
-                    <Link
-                      key={to}
-                      to={to}
-                      className={cn(
-                        "rounded-md px-2 py-1 text-xs font-medium",
-                        isActive(to)
-                          ? "text-accent"
-                          : "text-on-muted",
-                      )}
-                    >
-                      {label}
-                    </Link>
-                  ))}
-                </nav>
+                <AuthControls />
               </div>
             </div>
           </header>
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+
+          {/* "Return to session" banner */}
+          {showSessionBanner && (
+            <Link
+              to={`/session/${activeSession.sessionId}`}
+              className={cn(
+                "flex shrink-0 items-center gap-2 border-b border-accent/20 bg-accent-dim/30 px-5 py-2 text-sm transition-colors hover:bg-accent-dim/50",
+                gutterPx,
+              )}
+            >
+              <Radio className="size-3.5 shrink-0 animate-pulse text-accent" />
+              <span className="flex-1 truncate text-on-surface">
+                {activeSession.topicDisplay}
+              </span>
+              <span className="shrink-0 text-xs font-medium text-accent">
+                Return to session →
+              </span>
+            </Link>
+          )}
+
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(env(safe-area-inset-bottom)+3.5rem)] lg:pb-0">
             {children}
           </main>
         </div>
       </div>
+      {!inSession && <MobileNav />}
     </div>
   );
 }

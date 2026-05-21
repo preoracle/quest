@@ -54,6 +54,11 @@ export function rankTopics(topics: TopicCatalogItem[]): RankedTopic[] {
     let rank = 0;
     let section: TopicSection = "library";
 
+    if (t.pinned) {
+      rank += 2500;
+      section = "pick_up";
+    }
+
     if (t.due_count > 0) {
       rank += 2000 + t.due_count * 20;
       section = "pick_up";
