@@ -13,6 +13,7 @@ import { ContentTrack } from "@/components/ContentColumn";
 import { QuestionHero } from "@/components/QuestionHero";
 import { SessionCompletePanel } from "@/components/SessionCompletePanel";
 import { SessionScaffold } from "@/components/SessionScaffold";
+import { SessionSidebar } from "@/components/SessionSidebar";
 import { Skeleton } from "@/components/Skeleton";
 import { TurnHistory } from "@/components/TurnHistory";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,10 @@ export function SessionPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [startingFresh, setStartingFresh] = useState(false);
+  const [continuingStudy, setContinuingStudy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnSeed, setTurnSeed] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -109,6 +112,10 @@ export function SessionPage() {
       );
       setSession(next);
       setAnswer("");
+      if (next.last_evaluation) {
+        const s = next.last_evaluation.score;
+        setStreak((prev) => (s >= 3 ? prev + 1 : 0));
+      }
       if (next.done) {
         setActiveSession(null);
         const turns = await fetchSessionTurns(sessionId);
@@ -118,6 +125,19 @@ export function SessionPage() {
       setError(err instanceof Error ? err.message : "Could not submit");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function continueStudy() {
+    if (!session?.topic_id) return;
+    setContinuingStudy(true);
+    setError(null);
+    try {
+      const next = await startSession(session.topic_id, "resume");
+      navigate(`/session/${next.session_id}`, { replace: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start");
+      setContinuingStudy(false);
     }
   }
 
@@ -181,7 +201,9 @@ export function SessionPage() {
           <ContentTrack tier="reading">
             <SessionCompletePanel
               session={session}
+              onContinueStudy={continueStudy}
               onStartFresh={startFreshRun}
+              continuingStudy={continuingStudy}
               startingFresh={startingFresh}
             />
           </ContentTrack>
@@ -189,9 +211,12 @@ export function SessionPage() {
       )}
 
       {session && !loading && !session.done && (
+        <div className="flex min-h-0 flex-1 overflow-hidden">
         <SessionScaffold
           turnsAnswered={turnsAnswered}
           scrollTrigger={turnSeed}
+          streak={streak}
+          className="min-w-0 flex-1"
           pinnedQuestion={
             activeQuestion ? (
               <QuestionHero question={activeQuestion} focus={session.focus} />
@@ -231,6 +256,8 @@ export function SessionPage() {
             ) : undefined
           }
         />
+        <SessionSidebar session={session} transcript={transcript} />
+        </div>
       )}
     </AppShell>
   );
