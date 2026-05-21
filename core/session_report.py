@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from pydantic import BaseModel, Field
 
+from core.concept_pick import is_concept_mastered
 from db import queries
 
 
@@ -30,6 +31,9 @@ class SessionReport(BaseModel):
     topic_display: str
     total_turns: int
     evaluated_answers: int
+    concept_count: int = 0
+    mastered_count: int = 0
+    topic_complete: bool = False
     concepts: list[ConceptReportRow] = Field(default_factory=list)
     top_gaps: list[str] = Field(default_factory=list)
     narrative: str | None = None
@@ -100,12 +104,44 @@ def build_session_report(
     top_gaps = all_gaps[:5]
     evaluated = sum(c.answer_turns for c in concepts)
 
+    concept_rows = conn.execute(
+        """
+        SELECT id FROM concepts
+        WHERE topic = ? AND kind = 'concept'
+        """,
+        (topic_id,),
+    ).fetchall()
+    concept_count = len(concept_rows)
+    mastered_count = 0
+    if concept_count:
+        user_row = conn.execute(
+            "SELECT user_id FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        if user_row:
+            user_id = user_row["user_id"]
+            for row in concept_rows:
+                m = conn.execute(
+                    """
+                    SELECT score, num_evaluations FROM mastery
+                    WHERE user_id = ? AND concept_id = ?
+                    """,
+                    (user_id, row["id"]),
+                ).fetchone()
+                if m and is_concept_mastered(
+                    float(m["score"]), int(m["num_evaluations"]),
+                ):
+                    mastered_count += 1
+
     return SessionReport(
         session_id=session_id,
         topic_id=topic_id,
         topic_display=topic_display,
         total_turns=len(turns),
         evaluated_answers=evaluated,
+        concept_count=concept_count,
+        mastered_count=mastered_count,
+        topic_complete=concept_count > 0 and mastered_count >= concept_count,
         concepts=concepts,
         top_gaps=top_gaps,
         narrative=narrative,
