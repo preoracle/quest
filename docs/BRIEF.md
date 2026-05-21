@@ -58,7 +58,8 @@ quest/
 ├── tests/
 │   └── test_evaluator.py # Eval chain tests (Phase 2)
 ├── BRIEF.md              # This file
-├── PHASES.md             # Build phases
+├── PHASES.md             # Build phases (original 14-day plan)
+├── PRODUCT_PLAN.md       # Scale, knowledge architecture, persistence (Phases 1–4)
 └── main.py               # Entry point
 
 ## CLI — onboarding, replay, reset

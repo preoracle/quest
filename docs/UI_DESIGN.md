@@ -18,6 +18,15 @@ Product-first design. **Not a chat app.** The tutor asks; a separate model score
 
 **Warm studio dark** — void canvas, gold accent (`#d4a853`), Fraunces + Plus Jakarta Sans + IBM Plex Mono, mesh gradients, rounded cards with soft shadows. Landing: preloader, hero, 3-step “how it works”, feature grid. Study: question card + timeline history + evaluator scorecards (not chat).
 
+## Layout contract (implementation)
+
+Structural work is tracked in **[UI_LAYOUT_PLAN.md](./UI_LAYOUT_PLAN.md)**. Summary:
+
+- **Marketing** (`/`): document scroll; no `data-app-shell`.
+- **Product** (`AppShell` routes): `h-dvh`, body lock at router layout, one scroll root per route.
+- **Widths:** `catalog` (lists) vs `reading` (session, baseline, prose) — no per-page `max-w-*` variants.
+- **Grid:** one horizontal gutter for header, toolbar, and content in the main column.
+
 ## Stack
 
 - React + Vite + Tailwind v4

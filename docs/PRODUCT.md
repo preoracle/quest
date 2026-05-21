@@ -33,6 +33,7 @@ Cross-concept chat context is **not** kept in the tutor thread (by design today)
 | `quest TOPIC` | Start / resume topic |
 | `quest TOPIC --fresh` | New session, replay full DAG |
 | `quest topic new "goal"` | LLM-generated topic YAML |
+| `quest topic archive\|rm\|rename` | Workspace hygiene (Phase 1) |
 | `quest mastery` / `quest reset` | Progress |
 | `quest due` | Concepts due for SM-2 review |
 | `quest TOPIC --baseline` | Calibrate, then study |
@@ -46,4 +47,4 @@ At catalog `›`: `3`, `binary_search`, `binary_search --fresh`, `new …`, `hel
 
 Web UI as primary (API + `frontend/` exist; CLI is canonical).
 
-Planning (contributors): [ROADMAP](https://github.com/preoracle/quest/blob/main/docs/ROADMAP.md) on GitHub — not part of the PyPI package page.
+Planning (contributors): [ROADMAP](ROADMAP.md), [PRODUCT_PLAN](PRODUCT_PLAN.md) — not part of the PyPI package page.

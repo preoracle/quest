@@ -29,6 +29,10 @@ Use the same environment where you installed Quest (venv: `.venv/bin/pip install
 | `quest TOPIC --fresh` | New session, replay full concept DAG |
 | `quest TOPIC --baseline` | Calibrate mastery, then study |
 | `quest topic new "your goal"` | Generate a concept map (LLM) |
+| `quest topic archive ID` | Hide topic from catalog (bundled or custom) |
+| `quest topic unarchive ID` | Restore archived topic |
+| `quest topic rename OLD NEW` | Rename a user-created topic slug |
+| `quest topic rm ID [--yes]` | Delete user-created topic + progress |
 | `quest mastery` | Mastery scores |
 | `quest due` | Concepts due for review (SM-2) |
 | `quest due --json` | Same, JSON output |

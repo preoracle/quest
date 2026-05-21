@@ -44,9 +44,20 @@ Detailed plan: **[PHASE_B_PLAN.md](PHASE_B_PLAN.md)**.
 
 ---
 
-## Phase D — Later
+## Phase D — Scale, knowledge & persistence (active plan)
 
-Voice, interview sprint, team/classroom.
+Full strategy, phased delivery, and exit criteria:
+
+**[PRODUCT_PLAN.md](PRODUCT_PLAN.md)**
+
+| Phase | Focus |
+|-------|--------|
+| **1** | Workflow stability — topic lifecycle, search, catalog at scale |
+| **2** | Clerk + Supabase — personal workspaces |
+| **3** | Knowledge graph + embeddings + Graph RAG (retrieval-first) |
+| **4** | Progress insights & adaptive recommendations |
+
+**Later (horizon):** Voice, interview sprint, team/classroom — see PRODUCT_PLAN §5.
 
 ---
 
