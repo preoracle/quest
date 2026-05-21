@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  // Load VITE_* from repo root `.env` / `.env.local` when running `npm run dev` in frontend/
+  envDir: path.resolve(__dirname, ".."),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },

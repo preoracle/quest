@@ -11,7 +11,12 @@ dist/
 ContextPool/
 quest.db
 quest_checkpoints.db
+quest_checkpoints.db-shm
+quest_checkpoints.db-wal
 quest_cli_history
+quest_data/
+*.swp
+*.swo
 frontend/node_modules/
 frontend/dist/
 stitch_quest_socratic_ai
