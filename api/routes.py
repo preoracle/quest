@@ -10,6 +10,8 @@ import yaml
 
 from api.schemas import (
     BaselineAnswerRequest,
+    ConceptSearchHit,
+    ConceptSearchResponse,
     DueItem,
     DueResponse,
     GenerateTopicRequest,
@@ -22,37 +24,51 @@ from api.schemas import (
     TopicCatalogItem,
     TopicCatalogResponse,
     TopicCreatedResponse,
+    TopicLifecycleResponse,
     TopicSummaryItem,
     TopicSummaryResponse,
     TurnItem,
+    UpdateTopicRequest,
 )
 from core.baseline_api import BaselineView, start_baseline, submit_baseline_answer
 from core.session_api import SessionView, get_session_view, start_session, submit_turn
 from core.topic_catalog import list_topic_catalog
 from core.topic_generator import generate_topic_payload, write_topic_yaml
 from core.topic_graph import TopicGraph, get_topic_graph, topic_mastery_summary
+from core.topic_lifecycle import (
+    TopicLifecycleError,
+    delete_topic,
+    is_user_deletable,
+    mark_topic_user_created,
+    rename_topic,
+    set_topic_archived,
+    set_topic_pinned,
+    update_topic_display_name,
+)
+from core.topic_search import search_concepts_across_topics, search_topics
 from core.topic_validate import validate_topic_payload
 from db import queries
 
 router = APIRouter()
 
 
-@router.get("/topics", response_model=TopicCatalogResponse)
-def list_available_topics(user_id: str = Query(default="default")) -> TopicCatalogResponse:
-    """Return topic catalog with previews and user progress rollups."""
-    catalog = list_topic_catalog()
-    with queries.get_connection() as conn:
-        summaries = {
-            s["topic_id"]: s for s in topic_mastery_summary(conn, user_id)
-        }
-        last_study = queries.get_topic_last_study_at(conn, user_id)
-
+def _catalog_items(
+    conn,
+    user_id: str,
+    rows: list[dict],
+) -> list[TopicCatalogItem]:
+    """Merge catalog rows with mastery rollups and lifecycle flags."""
+    summaries = {s["topic_id"]: s for s in topic_mastery_summary(conn, user_id)}
+    last_study = queries.get_topic_last_study_at(conn, user_id)
+    meta = queries.list_topic_metadata(conn)
     items: list[TopicCatalogItem] = []
-    for row in catalog:
-        s = summaries.get(row["id"], {})
+    for row in rows:
+        tid = row["id"]
+        s = summaries.get(tid, {})
+        m = meta.get(tid, {})
         items.append(
             TopicCatalogItem(
-                id=row["id"],
+                id=tid,
                 display_name=row["display_name"],
                 concept_count=row["concept_count"],
                 preview_concepts=row["preview_concepts"],
@@ -61,10 +77,121 @@ def list_available_topics(user_id: str = Query(default="default")) -> TopicCatal
                 mastered_count=int(s.get("mastered_count") or 0),
                 avg_score_1_to_5=float(s.get("avg_score_1_to_5") or 0),
                 due_count=int(s.get("due_count") or 0),
-                last_studied_at=last_study.get(row["id"]),
+                last_studied_at=last_study.get(tid),
+                archived=bool(row.get("archived") or m.get("archived_at")),
+                pinned=bool(row.get("pinned") or m.get("pinned_at")),
+                user_created=bool(m.get("user_created")),
+                deletable=is_user_deletable(conn, tid),
             )
         )
+    return items
+
+
+@router.get("/topics", response_model=TopicCatalogResponse)
+def list_available_topics(
+    user_id: str = Query(default="default"),
+    q: str = Query(default="", description="Search topics and concept previews"),
+    include_archived: bool = Query(default=False),
+) -> TopicCatalogResponse:
+    """Return topic catalog with previews, search, and user progress rollups."""
+    with queries.get_connection() as conn:
+        queries.get_or_create_user(conn, user_id)
+        meta = queries.list_topic_metadata(conn)
+        rows = search_topics(
+            query=q,
+            include_archived=include_archived,
+            metadata=meta,
+        )
+        items = _catalog_items(conn, user_id, rows)
     return TopicCatalogResponse(user_id=user_id, topics=items)
+
+
+@router.get("/search/concepts", response_model=ConceptSearchResponse)
+def search_concepts(
+    q: str = Query(..., min_length=1),
+    user_id: str = Query(default="default"),
+) -> ConceptSearchResponse:
+    """Find concept names across topics matching a query string."""
+    with queries.get_connection() as conn:
+        queries.get_or_create_user(conn, user_id)
+        meta = queries.list_topic_metadata(conn)
+        hits = search_concepts_across_topics(q, metadata=meta)
+    return ConceptSearchResponse(
+        query=q,
+        hits=[ConceptSearchHit(**h) for h in hits],
+    )
+
+
+@router.patch("/topics/{topic_id}", response_model=TopicLifecycleResponse)
+def patch_topic(
+    topic_id: str,
+    body: UpdateTopicRequest,
+    user_id: str = Query(default="default"),
+) -> TopicLifecycleResponse:
+    """Rename, update display name, archive, or pin a topic."""
+    try:
+        with queries.get_connection() as conn:
+            queries.get_or_create_user(conn, user_id)
+            if body.new_topic_id:
+                result = rename_topic(
+                    conn,
+                    topic_id,
+                    body.new_topic_id,
+                    display_name=body.display_name,
+                )
+                return TopicLifecycleResponse(
+                    topic_id=result["topic_id"],
+                    display_name=result["display_name"],
+                    previous_id=result["previous_id"],
+                )
+            display_name = body.display_name
+            if display_name is not None:
+                updated = update_topic_display_name(conn, topic_id, display_name)
+                display_name = updated["display_name"]
+            archived = body.archived
+            if archived is not None:
+                set_topic_archived(conn, topic_id, archived=archived)
+            pinned = body.pinned
+            if pinned is not None:
+                set_topic_pinned(conn, topic_id, pinned=pinned)
+            if (
+                display_name is None
+                and archived is None
+                and pinned is None
+            ):
+                raise TopicLifecycleError("No fields to update")
+            return TopicLifecycleResponse(
+                topic_id=topic_id,
+                display_name=display_name,
+                archived=archived,
+                pinned=pinned,
+            )
+    except TopicLifecycleError as exc:
+        msg = str(exc)
+        code = 404 if "Unknown topic" in msg or "No concept map" in msg else 403
+        raise HTTPException(status_code=code, detail=msg) from exc
+
+
+@router.delete("/topics/{topic_id}", response_model=TopicLifecycleResponse)
+def remove_topic(
+    topic_id: str,
+    user_id: str = Query(default="default"),
+    wipe_progress: bool = Query(default=True),
+) -> TopicLifecycleResponse:
+    """Delete a user-created topic and its progress."""
+    try:
+        with queries.get_connection() as conn:
+            queries.get_or_create_user(conn, user_id)
+            delete_topic(conn, topic_id, user_id=user_id, wipe_progress=wipe_progress)
+        return TopicLifecycleResponse(
+            topic_id=topic_id,
+            deleted=True,
+            message="Topic removed",
+        )
+    except TopicLifecycleError as exc:
+        msg = str(exc)
+        code = 404 if "Unknown topic" in msg or "No concept map" in msg else 403
+        raise HTTPException(status_code=code, detail=msg) from exc
 
 
 @router.get("/topics/{topic_id}/graph", response_model=TopicGraph)
@@ -103,6 +230,8 @@ def generate_topic(body: GenerateTopicRequest) -> TopicCreatedResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    with queries.get_connection() as conn:
+        mark_topic_user_created(conn, data["topic"])
     return TopicCreatedResponse(
         topic_id=data["topic"],
         display_name=data["display_name"],
@@ -127,6 +256,8 @@ def import_topic(body: ImportTopicRequest) -> TopicCreatedResponse:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with queries.get_connection() as conn:
+        mark_topic_user_created(conn, data["topic"])
     return TopicCreatedResponse(
         topic_id=data["topic"],
         display_name=data["display_name"],

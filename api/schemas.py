@@ -88,6 +88,47 @@ class TopicCatalogItem(BaseModel):
     avg_score_1_to_5: float = 0.0
     due_count: int = 0
     last_studied_at: str | None = None
+    archived: bool = False
+    pinned: bool = False
+    user_created: bool = False
+    deletable: bool = False
+
+
+class UpdateTopicRequest(BaseModel):
+    """Body for PATCH /topics/{topic_id}."""
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    archived: bool | None = None
+    pinned: bool | None = None
+    new_topic_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=48,
+        description="Rename slug (user-created topics only)",
+    )
+
+
+class TopicLifecycleResponse(BaseModel):
+    """Result of PATCH or DELETE on a topic."""
+
+    topic_id: str
+    display_name: str | None = None
+    archived: bool | None = None
+    pinned: bool | None = None
+    deleted: bool | None = None
+    previous_id: str | None = None
+    message: str | None = None
+
+
+class ConceptSearchHit(BaseModel):
+    topic_id: str
+    topic_display_name: str
+    concept_name: str
+
+
+class ConceptSearchResponse(BaseModel):
+    query: str
+    hits: list[ConceptSearchHit]
 
 
 class TopicCatalogResponse(BaseModel):
