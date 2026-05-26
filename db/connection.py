@@ -143,24 +143,100 @@ class PgConn:
 
 
 # ---------------------------------------------------------------------------
+# Postgres connection pool (singleton)
+# ---------------------------------------------------------------------------
+
+_pg_pool = None
+
+
+def _get_pg_pool():
+    """Return a shared psycopg ConnectionPool, creating it on first call."""
+    global _pg_pool
+    if _pg_pool is None:
+        url = _database_url()
+        if not url:
+            return None
+        try:
+            from psycopg_pool import ConnectionPool  # noqa: PLC0415
+            from psycopg.rows import dict_row  # noqa: PLC0415
+            _pg_pool = ConnectionPool(
+                url,
+                min_size=2,
+                max_size=10,
+                # prepare_threshold=None disables psycopg3 auto-preparation.
+                # Required when using Supabase Transaction Pooler (PgBouncer in
+                # transaction mode): each transaction may land on a different
+                # backend connection, so prepared statements made in one
+                # transaction are invisible in the next → DuplicatePreparedStatement.
+                kwargs={"row_factory": dict_row, "prepare_threshold": None},
+            )
+        except ImportError as exc:
+            raise ImportError(
+                "DATABASE_URL is set but psycopg[pool] is not installed. "
+                "Run: uv add 'psycopg[pool]'"
+            ) from exc
+    return _pg_pool
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
-def get_connection(db_path: Path | str | None = None) -> SQLiteConn | PgConn:
-    """Return a DB connection — Postgres when DATABASE_URL is set, else SQLite."""
-    url = _database_url()
-    if url:
-        try:
-            import psycopg  # noqa: PLC0415
-            from psycopg.rows import dict_row  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "DATABASE_URL is set but psycopg is not installed. "
-                "Run: pip install 'psycopg[binary]'"
-            ) from exc
-        conn = psycopg.connect(url, row_factory=dict_row)
-        return PgConn(conn)
+def get_connection(db_path: Path | str | None = None) -> SQLiteConn | "PooledPgConn":
+    """Return a DB connection — pooled Postgres when DATABASE_URL is set, else SQLite."""
+    pool = _get_pg_pool()
+    if pool is not None:
+        return PooledPgConn(pool)
 
     from core.paths import db_path as _default_db_path  # noqa: PLC0415
     path = Path(db_path) if db_path else _default_db_path()
     return SQLiteConn(path)
+
+
+class PooledPgConn:
+    """Wraps a psycopg_pool connection — checks it out on enter, returns it on exit."""
+    db_type: str = "postgres"
+
+    def __init__(self, pool) -> None:
+        self._pool = pool
+        self._conn = None
+        self._pg = None  # underlying PgConn
+
+    def _ensure(self):
+        if self._conn is None:
+            self._conn = self._pool.getconn()
+            self._pg = PgConn(self._conn)
+
+    def execute(self, sql: str, params: Sequence[Any] = ()) -> _PgCursor:
+        self._ensure()
+        return self._pg.execute(sql, params)
+
+    def executescript(self, sql: str) -> None:
+        self._ensure()
+        self._pg.executescript(sql)
+
+    def commit(self) -> None:
+        if self._pg:
+            self._pg.commit()
+
+    def rollback(self) -> None:
+        if self._pg:
+            self._pg.rollback()
+
+    def __enter__(self) -> "PooledPgConn":
+        self._ensure()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        try:
+            if self._conn is not None:
+                if exc_type:
+                    self._conn.rollback()
+                else:
+                    self._conn.commit()
+        finally:
+            if self._conn is not None:
+                self._pool.putconn(self._conn)
+                self._conn = None
+                self._pg = None
+        return False
