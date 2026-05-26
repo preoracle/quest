@@ -14,24 +14,23 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
-let _userId = "default";
+let _token: string | null = null;
 
-/** Called once by ClerkUserSync when the authenticated user is known. */
-export function setUserId(id: string) {
-  _userId = id;
-}
-
-export function getUserId() {
-  return _userId;
+/** Called by AuthProvider whenever the Supabase session changes. */
+export function setToken(token: string | null) {
+  _token = token;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+  if (_token) headers["Authorization"] = `Bearer ${_token}`;
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -70,24 +69,32 @@ export function deleteTopic(topicId: string): Promise<void> {
 export function fetchTopics(options?: {
   q?: string;
   includeArchived?: boolean;
+  enrolledOnly?: boolean;
 }): Promise<TopicCatalogItem[]> {
   const params = new URLSearchParams();
-  params.set("user_id", _userId);
   if (options?.q?.trim()) params.set("q", options.q.trim());
   if (options?.includeArchived) params.set("include_archived", "true");
-  return request<TopicCatalogResponse>(`/topics?${params.toString()}`).then(
+  if (options?.enrolledOnly) params.set("enrolled_only", "true");
+  const qs = params.toString();
+  return request<TopicCatalogResponse>(`/topics${qs ? `?${qs}` : ""}`).then(
     (r) => r.topics,
   );
 }
 
 export function fetchProgressSummary(): Promise<TopicSummaryResponse> {
-  return request<TopicSummaryResponse>(`/users/${_userId}/progress/summary`);
+  return request<TopicSummaryResponse>(`/users/me/progress/summary`);
 }
 
 export function fetchTopicGraph(topicId: string): Promise<TopicGraph> {
-  return request<TopicGraph>(
-    `/topics/${encodeURIComponent(topicId)}/graph?user_id=${_userId}`,
-  );
+  return request<TopicGraph>(`/topics/${encodeURIComponent(topicId)}/graph`);
+}
+
+export function enrollTopic(topicId: string): Promise<{ enrolled: boolean }> {
+  return request(`/topics/${encodeURIComponent(topicId)}/enroll`, { method: "POST" });
+}
+
+export function unenrollTopic(topicId: string): Promise<{ enrolled: boolean }> {
+  return request(`/topics/${encodeURIComponent(topicId)}/enroll`, { method: "DELETE" });
 }
 
 export function generateTopic(goal: string, force = false): Promise<TopicCreated> {
@@ -110,7 +117,7 @@ export function importTopicYaml(
 export function startBaseline(topic: string): Promise<BaselineView> {
   return request<BaselineView>("/baseline", {
     method: "POST",
-    body: JSON.stringify({ user_id: _userId, topic }),
+    body: JSON.stringify({ topic }),
   });
 }
 
@@ -131,7 +138,6 @@ export function startSession(
   return request<SessionView>("/sessions", {
     method: "POST",
     body: JSON.stringify({
-      user_id: _userId,
       topic,
       resume: mode === "resume",
       replay: mode === "replay",
@@ -163,10 +169,10 @@ export function finishSession(sessionId: string): Promise<SessionView> {
 
 export function fetchMastery(topic?: string): Promise<MasteryResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
-  return request<MasteryResponse>(`/users/${_userId}/mastery${q}`);
+  return request<MasteryResponse>(`/users/me/mastery${q}`);
 }
 
 export function fetchDue(topic?: string): Promise<DueResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
-  return request<DueResponse>(`/users/${_userId}/due${q}`);
+  return request<DueResponse>(`/users/me/due${q}`);
 }

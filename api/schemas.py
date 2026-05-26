@@ -92,6 +92,7 @@ class TopicCatalogItem(BaseModel):
     pinned: bool = False
     user_created: bool = False
     deletable: bool = False
+    enrolled: bool = False
 
 
 class UpdateTopicRequest(BaseModel):

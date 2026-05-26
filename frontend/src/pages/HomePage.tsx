@@ -1,8 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { ArrowRight, Brain, Layers, Timer } from "lucide-react";
-import { Show } from "@clerk/react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/components/AuthProvider";
 import { HeroDemoCard } from "@/components/HeroDemoCard";
 import { Preloader } from "@/components/Preloader";
 import { SignInModalTrigger } from "@/components/SignInModalTrigger";
@@ -61,6 +61,7 @@ export function HomePage() {
   const reduce = useReducedMotion();
   const [ready, setReady] = useState(!!reduce);
   const [dueCount, setDueCount] = useState(0);
+  const { user } = useAuth();
 
   useLenis(ready);
 
@@ -143,31 +144,34 @@ export function HomePage() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.55 }}
                 >
-                  <Show when="signed-in">
-                    <Button asChild size="lg">
-                      <Link to="/topics">
-                        Start studying
-                        <ArrowRight className="size-4" />
-                      </Link>
-                    </Button>
-                    {dueCount > 0 && (
-                      <Button asChild variant="outline" size="lg">
-                        <Link to="/due">{dueCount} due for review</Link>
+                  {user ? (
+                    <>
+                      <Button asChild size="lg">
+                        <Link to="/topics">
+                          Start studying
+                          <ArrowRight className="size-4" />
+                        </Link>
                       </Button>
-                    )}
-                  </Show>
-                  <Show when="signed-out">
-                    <SignInModalTrigger
-                      label="Start learning free"
-                      size="lg"
-                      className="gap-2"
-                    />
-                    <Button asChild variant="ghost" size="lg">
-                      <Link to="#how-it-works" className="text-on-muted">
-                        See how it works
-                      </Link>
-                    </Button>
-                  </Show>
+                      {dueCount > 0 && (
+                        <Button asChild variant="outline" size="lg">
+                          <Link to="/due">{dueCount} due for review</Link>
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <SignInModalTrigger
+                        label="Start learning free"
+                        size="lg"
+                        className="gap-2"
+                      />
+                      <Button asChild variant="ghost" size="lg">
+                        <Link to="#how-it-works" className="text-on-muted">
+                          See how it works
+                        </Link>
+                      </Button>
+                    </>
+                  )}
                 </motion.div>
               </div>
 
@@ -380,21 +384,20 @@ export function HomePage() {
                 viewport={{ once: true }}
                 transition={{ delay: 0.25 }}
               >
-                <Show when="signed-out">
-                  <SignInModalTrigger
-                    label="Start learning free"
-                    size="lg"
-                    className="gap-2"
-                  />
-                </Show>
-                <Show when="signed-in">
+                {user ? (
                   <Button asChild size="lg">
                     <Link to="/topics">
                       Go to topics
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>
-                </Show>
+                ) : (
+                  <SignInModalTrigger
+                    label="Start learning free"
+                    size="lg"
+                    className="gap-2"
+                  />
+                )}
               </motion.div>
             </div>
           </section>

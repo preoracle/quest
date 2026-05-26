@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
-
 import json
+import os
 
 import yaml
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.schemas import (
     BaselineAnswerRequest,
@@ -52,6 +52,33 @@ from db import queries
 router = APIRouter()
 
 
+# ---------------------------------------------------------------------------
+# Auth dependency — extracts user_id from Supabase JWT or falls back to
+# "default" in dev (no SUPABASE_JWT_SECRET configured).
+# ---------------------------------------------------------------------------
+
+async def get_current_user(request: Request) -> str:
+    """Return the authenticated user_id from Supabase JWT, or 'default' in dev."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return "default"
+    token = auth[7:]
+    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+    if not jwt_secret:
+        return "default"  # dev mode: accept any request
+    try:
+        import jwt as pyjwt  # noqa: PLC0415
+        payload = pyjwt.decode(
+            token,
+            jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+        return str(payload["sub"])
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
+
+
 def _catalog_items(
     conn,
     user_id: str,
@@ -89,31 +116,38 @@ def _catalog_items(
 
 @router.get("/topics", response_model=TopicCatalogResponse)
 def list_available_topics(
-    user_id: str = Query(default="default"),
     q: str = Query(default="", description="Search topics and concept previews"),
     include_archived: bool = Query(default=False),
+    enrolled_only: bool = Query(default=False, description="Return only topics this user is enrolled in"),
+    current_user: str = Depends(get_current_user),
 ) -> TopicCatalogResponse:
     """Return topic catalog with previews, search, and user progress rollups."""
     with queries.get_connection() as conn:
-        queries.get_or_create_user(conn, user_id)
+        queries.get_or_create_user(conn, current_user)
         meta = queries.list_topic_metadata(conn)
         rows = search_topics(
             query=q,
             include_archived=include_archived,
             metadata=meta,
         )
-        items = _catalog_items(conn, user_id, rows)
-    return TopicCatalogResponse(user_id=user_id, topics=items)
+        if enrolled_only:
+            enrolled = queries.get_user_enrolled_topics(conn, current_user)
+            rows = [r for r in rows if r["id"] in enrolled]
+        items = _catalog_items(conn, current_user, rows)
+        enrolled_ids = queries.get_user_enrolled_topics(conn, current_user)
+        for item in items:
+            item.enrolled = item.id in enrolled_ids
+    return TopicCatalogResponse(user_id=current_user, topics=items)
 
 
 @router.get("/search/concepts", response_model=ConceptSearchResponse)
 def search_concepts(
     q: str = Query(..., min_length=1),
-    user_id: str = Query(default="default"),
+    current_user: str = Depends(get_current_user),
 ) -> ConceptSearchResponse:
     """Find concept names across topics matching a query string."""
     with queries.get_connection() as conn:
-        queries.get_or_create_user(conn, user_id)
+        queries.get_or_create_user(conn, current_user)
         meta = queries.list_topic_metadata(conn)
         hits = search_concepts_across_topics(q, metadata=meta)
     return ConceptSearchResponse(
@@ -122,16 +156,40 @@ def search_concepts(
     )
 
 
+@router.post("/topics/{topic_id}/enroll", response_model=dict)
+def enroll_in_topic(
+    topic_id: str,
+    current_user: str = Depends(get_current_user),
+) -> dict:
+    """Add a topic to the current user's enrolled quests."""
+    with queries.get_connection() as conn:
+        queries.get_or_create_user(conn, current_user)
+        queries.enroll_topic(conn, current_user, topic_id)
+    return {"enrolled": True, "topic_id": topic_id}
+
+
+@router.delete("/topics/{topic_id}/enroll", response_model=dict)
+def unenroll_from_topic(
+    topic_id: str,
+    current_user: str = Depends(get_current_user),
+) -> dict:
+    """Remove a topic from the current user's enrolled quests."""
+    with queries.get_connection() as conn:
+        queries.get_or_create_user(conn, current_user)
+        queries.unenroll_topic(conn, current_user, topic_id)
+    return {"enrolled": False, "topic_id": topic_id}
+
+
 @router.patch("/topics/{topic_id}", response_model=TopicLifecycleResponse)
 def patch_topic(
     topic_id: str,
     body: UpdateTopicRequest,
-    user_id: str = Query(default="default"),
+    current_user: str = Depends(get_current_user),
 ) -> TopicLifecycleResponse:
     """Rename, update display name, archive, or pin a topic."""
     try:
         with queries.get_connection() as conn:
-            queries.get_or_create_user(conn, user_id)
+            queries.get_or_create_user(conn, current_user)
             if body.new_topic_id:
                 result = rename_topic(
                     conn,
@@ -175,14 +233,14 @@ def patch_topic(
 @router.delete("/topics/{topic_id}", response_model=TopicLifecycleResponse)
 def remove_topic(
     topic_id: str,
-    user_id: str = Query(default="default"),
     wipe_progress: bool = Query(default=True),
+    current_user: str = Depends(get_current_user),
 ) -> TopicLifecycleResponse:
     """Delete a user-created topic and its progress."""
     try:
         with queries.get_connection() as conn:
-            queries.get_or_create_user(conn, user_id)
-            delete_topic(conn, topic_id, user_id=user_id, wipe_progress=wipe_progress)
+            queries.get_or_create_user(conn, current_user)
+            delete_topic(conn, topic_id, user_id=current_user, wipe_progress=wipe_progress)
         return TopicLifecycleResponse(
             topic_id=topic_id,
             deleted=True,
@@ -197,23 +255,28 @@ def remove_topic(
 @router.get("/topics/{topic_id}/graph", response_model=TopicGraph)
 def read_topic_graph(
     topic_id: str,
-    user_id: str = Query(default="default"),
+    current_user: str = Depends(get_current_user),
 ) -> TopicGraph:
     """Concept DAG with prerequisites and user mastery scores."""
     try:
         with queries.get_connection() as conn:
-            return get_topic_graph(conn, user_id, topic_id)
+            return get_topic_graph(conn, current_user, topic_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/users/{user_id}/progress/summary", response_model=TopicSummaryResponse)
-def read_progress_summary(user_id: str) -> TopicSummaryResponse:
+@router.get("/users/me/progress/summary", response_model=TopicSummaryResponse)
+def read_progress_summary(
+    user_id: str = "default",
+    current_user: str = Depends(get_current_user),
+) -> TopicSummaryResponse:
     """Per-topic mastery rollup for dashboard cards."""
+    uid = current_user if current_user != "default" else user_id
     with queries.get_connection() as conn:
-        rows = topic_mastery_summary(conn, user_id)
+        rows = topic_mastery_summary(conn, uid)
     return TopicSummaryResponse(
-        user_id=user_id,
+        user_id=uid,
         topics=[TopicSummaryItem(**r) for r in rows],
     )
 
@@ -267,11 +330,14 @@ def import_topic(body: ImportTopicRequest) -> TopicCreatedResponse:
 
 
 @router.post("/baseline", response_model=BaselineView)
-def create_baseline(body: StartBaselineRequest) -> BaselineView:
+def create_baseline(
+    body: StartBaselineRequest,
+    current_user: str = Depends(get_current_user),
+) -> BaselineView:
     """Start or resume baseline calibration; returns first question."""
     try:
         with queries.get_connection() as conn:
-            return start_baseline(conn, body.user_id, body.topic)
+            return start_baseline(conn, current_user, body.topic)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -289,13 +355,16 @@ def post_baseline_answer(session_id: str, body: BaselineAnswerRequest) -> Baseli
 
 
 @router.post("/sessions", response_model=SessionView)
-def create_session(body: StartSessionRequest) -> SessionView:
+def create_session(
+    body: StartSessionRequest,
+    current_user: str = Depends(get_current_user),
+) -> SessionView:
     """Start or resume a session; returns the pending tutor question."""
     try:
         with queries.get_connection() as conn:
             return start_session(
                 conn,
-                body.user_id,
+                current_user,
                 body.topic,
                 resume=body.resume,
                 replay=body.replay,
@@ -371,15 +440,18 @@ def list_session_turns(session_id: str) -> list[TurnItem]:
 
 
 @router.get("/users/{user_id}/due", response_model=DueResponse)
+@router.get("/users/me/due", response_model=DueResponse)
 def read_due(
-    user_id: str,
+    user_id: str = "default",
     topic: str | None = Query(default=None, description="Filter by topic id"),
+    current_user: str = Depends(get_current_user),
 ) -> DueResponse:
     """Return concepts due for SM-2 review."""
+    uid = current_user if current_user != "default" else user_id
     with queries.get_connection() as conn:
-        rows = queries.get_due_concepts(conn, user_id, topic=topic)
+        rows = queries.get_due_concepts(conn, uid, topic=topic)
     return DueResponse(
-        user_id=user_id,
+        user_id=uid,
         items=[
             DueItem(
                 topic=r.topic,
@@ -395,15 +467,18 @@ def read_due(
 
 
 @router.get("/users/{user_id}/mastery", response_model=MasteryResponse)
+@router.get("/users/me/mastery", response_model=MasteryResponse)
 def read_mastery(
-    user_id: str,
+    user_id: str = "default",
     topic: str | None = Query(default=None, description="Filter by topic id"),
+    current_user: str = Depends(get_current_user),
 ) -> MasteryResponse:
     """Return mastery rows for a user."""
+    uid = current_user if current_user != "default" else user_id
     with queries.get_connection() as conn:
-        rows = queries.get_mastery_for_user(conn, user_id, topic=topic)
+        rows = queries.get_mastery_for_user(conn, uid, topic=topic)
     return MasteryResponse(
-        user_id=user_id,
+        user_id=uid,
         items=[
             MasteryItem(
                 concept_id=r.concept_id,

@@ -1,5 +1,4 @@
-import { SignInButton } from "@clerk/react";
-import { Button } from "@/components/ui/button";
+import { AuthModal } from "@/components/AuthModal";
 import { cn } from "@/lib/utils";
 
 type SignInModalTriggerProps = {
@@ -9,9 +8,7 @@ type SignInModalTriggerProps = {
   className?: string;
 };
 
-/**
- * One entry point for auth: Clerk modal with sign-in and sign-up in the same flow.
- */
+/** Drop-in replacement for the old Clerk SignInButton. */
 export function SignInModalTrigger({
   label = "Sign in",
   size = "sm",
@@ -19,14 +16,6 @@ export function SignInModalTrigger({
   className,
 }: SignInModalTriggerProps) {
   return (
-    <SignInButton
-      mode="modal"
-      forceRedirectUrl="/dashboard"
-      signUpForceRedirectUrl="/dashboard"
-    >
-      <Button type="button" size={size} variant={variant} className={cn(className)}>
-        {label}
-      </Button>
-    </SignInButton>
+    <AuthModal trigger={label} size={size} variant={variant} className={cn(className)} />
   );
 }

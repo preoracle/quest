@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { useAuth } from "@clerk/react";
+import { useAuth } from "@/components/AuthProvider";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/layouts/AppLayout";
 import { HomePage } from "@/pages/HomePage";
@@ -12,9 +12,9 @@ import { SessionPage } from "@/pages/SessionPage";
 import { BaselinePage } from "@/pages/BaselinePage";
 
 function HomeRedirect() {
-  const { isSignedIn, isLoaded } = useAuth();
-  if (!isLoaded) return null;
-  if (isSignedIn) return <Navigate to="/dashboard" replace />;
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace />;
   return <HomePage />;
 }
 

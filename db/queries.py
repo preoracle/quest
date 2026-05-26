@@ -1,9 +1,8 @@
-"""All SQLite access for Quest. No raw SQL outside this module (per BRIEF)."""
+"""All database access for Quest. No raw SQL outside this module (per BRIEF)."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,9 +10,19 @@ from pathlib import Path
 from typing import Any
 
 from core.paths import checkpoint_db_path as default_checkpoint_path
-from core.paths import db_path as default_db_path
+from db import connection as _conn_module
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+_PG_SCHEMA_PATH = Path(__file__).resolve().parent / "schema.pg.sql"
+
+# Topics seeded for every new user on first login.
+DEFAULT_TOPICS: list[str] = [
+    "rag_pipeline",
+    "tool_calling_agents",
+    "prompt_engineering",
+    "embeddings_vector_search",
+    "system_design_interview",
+]
 
 
 def _utc_now() -> str:
@@ -21,22 +30,17 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
-    """Open a SQLite connection with row factory enabled.
-
-    Returns a connection to `db_path` or the default DB from `core.paths`.
-    """
-    path = Path(db_path) if db_path else default_db_path()
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+def get_connection(db_path: Path | str | None = None):
+    """Return a DB connection — Postgres when DATABASE_URL is set, else SQLite."""
+    return _conn_module.get_connection(db_path)
 
 
-def _migrate_schema(conn: sqlite3.Connection) -> None:
-    """Apply additive schema changes for existing databases."""
+def _migrate_schema(conn) -> None:
+    """Apply additive schema changes for existing SQLite databases."""
+    if conn.db_type != "sqlite":
+        return  # Postgres: always created fresh from the full schema
     cols = {
-        row[1]
+        row["name"]
         for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
     }
     if "report_json" not in cols:
@@ -46,7 +50,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'study'"
         )
     tables = {
-        row[0]
+        row["name"]
         for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
@@ -64,19 +68,39 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             )
             """
         )
+    if "user_topics" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE user_topics (
+              user_id TEXT NOT NULL REFERENCES users(id),
+              topic_id TEXT NOT NULL,
+              enrolled_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (user_id, topic_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_topics_user ON user_topics(user_id)"
+        )
 
 
-def init_db(db_path: Path | str | None = None) -> Path:
-    """Create tables from schema.sql if they do not exist.
+def init_db(db_path: Path | str | None = None) -> Path | None:
+    """Create tables from schema if they do not exist.
 
-    Returns the resolved database file path.
+    Uses schema.pg.sql for Postgres (DATABASE_URL set) or schema.sql for SQLite.
+    Returns the resolved database file path for SQLite, None for Postgres.
     """
-    path = Path(db_path) if db_path else default_db_path()
+    if _conn_module.db_mode() == "postgres":
+        schema = _PG_SCHEMA_PATH.read_text(encoding="utf-8")
+        with get_connection() as conn:
+            conn.executescript(schema)
+        return None
+    from core.paths import db_path as _default_db_path  # noqa: PLC0415
+    path = Path(db_path) if db_path else _default_db_path()
     schema = _SCHEMA_PATH.read_text(encoding="utf-8")
     with get_connection(path) as conn:
         conn.executescript(schema)
         _migrate_schema(conn)
-        conn.commit()
     return path
 
 
@@ -86,11 +110,14 @@ def namespace_concept_id(topic_id: str, local_id: str) -> str:
 
 
 def get_or_create_user(
-    conn: sqlite3.Connection,
+    conn,
     user_id: str = "default",
     name: str = "Default User",
 ) -> str:
-    """Ensure a user row exists and return the user id."""
+    """Ensure a user row exists and return the user id.
+
+    Seeds DEFAULT_TOPICS enrollment on first creation.
+    """
     row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
     if row is None:
         conn.execute(
@@ -98,6 +125,7 @@ def get_or_create_user(
             (user_id, name, _utc_now()),
         )
         conn.commit()
+        seed_default_topics(conn, user_id)
     return user_id
 
 
@@ -205,7 +233,7 @@ def get_session(conn: sqlite3.Connection, session_id: str) -> dict | None:
 
 
 def record_turn(
-    conn: sqlite3.Connection,
+    conn,
     session_id: str,
     turn_idx: int,
     role: str,
@@ -219,27 +247,24 @@ def record_turn(
 ) -> int:
     """Insert one turn row. Returns the new turn's autoincrement id."""
     gaps_json = json.dumps(evaluator_gaps or []) if evaluator_gaps is not None else None
-    cursor = conn.execute(
-        """
+    params = (
+        session_id, turn_idx, role, content,
+        evaluator_score, gaps_json, evaluator_reasoning,
+        evaluator_concept_id, evaluator_concept_confidence, _utc_now(),
+    )
+    insert_sql = """
         INSERT INTO turns (
             session_id, turn_idx, role, content,
             evaluator_score, evaluator_gaps_json, evaluator_reasoning,
             evaluator_concept_id, evaluator_concept_confidence, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            session_id,
-            turn_idx,
-            role,
-            content,
-            evaluator_score,
-            gaps_json,
-            evaluator_reasoning,
-            evaluator_concept_id,
-            evaluator_concept_confidence,
-            _utc_now(),
-        ),
-    )
+    """
+    if conn.db_type == "postgres":
+        cursor = conn.execute(insert_sql + " RETURNING id", params)
+        conn.commit()
+        row = cursor.fetchone()
+        return int(row["id"])
+    cursor = conn.execute(insert_sql, params)
     conn.commit()
     return int(cursor.lastrowid)
 
@@ -853,5 +878,59 @@ def migrate_topic_id(
     conn.execute(
         "UPDATE topic_metadata SET topic_id = ? WHERE topic_id = ?",
         (new_id, old_id),
+    )
+    conn.execute(
+        "UPDATE user_topics SET topic_id = ? WHERE topic_id = ?",
+        (new_id, old_id),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# User topic enrollment
+# ---------------------------------------------------------------------------
+
+def seed_default_topics(conn, user_id: str) -> None:
+    """Enroll a new user in DEFAULT_TOPICS."""
+    now = _utc_now()
+    for tid in DEFAULT_TOPICS:
+        conn.execute(
+            """
+            INSERT INTO user_topics (user_id, topic_id, enrolled_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, topic_id) DO NOTHING
+            """,
+            (user_id, tid, now),
+        )
+    conn.commit()
+
+
+def get_user_enrolled_topics(conn, user_id: str) -> set[str]:
+    """Return the set of topic_ids this user is enrolled in."""
+    rows = conn.execute(
+        "SELECT topic_id FROM user_topics WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+    return {r["topic_id"] for r in rows}
+
+
+def enroll_topic(conn, user_id: str, topic_id: str) -> None:
+    """Add a topic to this user's enrolled set (idempotent)."""
+    conn.execute(
+        """
+        INSERT INTO user_topics (user_id, topic_id, enrolled_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id, topic_id) DO NOTHING
+        """,
+        (user_id, topic_id, _utc_now()),
+    )
+    conn.commit()
+
+
+def unenroll_topic(conn, user_id: str, topic_id: str) -> None:
+    """Remove a topic from this user's enrolled set."""
+    conn.execute(
+        "DELETE FROM user_topics WHERE user_id = ? AND topic_id = ?",
+        (user_id, topic_id),
     )
     conn.commit()

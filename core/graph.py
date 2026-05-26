@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Literal, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
@@ -75,16 +75,26 @@ class QuestState(TypedDict, total=False):
     session_report: dict | None
 
 
-def build_checkpointer() -> SqliteSaver:
-    """Create the SQLite checkpointer for graph resumability."""
+def build_checkpointer():
+    """Create the LangGraph checkpointer — Postgres in prod, SQLite in dev."""
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        try:
+            from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
+            saver = PostgresSaver.from_conn_string(db_url)
+            saver.setup()
+            return saver
+        except ImportError:
+            pass  # fall back to SQLite if langgraph-checkpoint-postgres not installed
+    from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
     path = queries.get_checkpoint_db_path()
     conn = sqlite3.connect(str(path), check_same_thread=False)
     return SqliteSaver(conn)
 
 
 def build_quest_graph(
-    conn: sqlite3.Connection,
-    checkpointer: SqliteSaver,
+    conn,
+    checkpointer,
 ):
     """Compile the Quest StateGraph with DB-aware nodes.
 
@@ -303,7 +313,7 @@ def build_quest_graph(
 
 
 def seed_state_from_turns(
-    conn: sqlite3.Connection,
+    conn,
     session_id: str,
     user_id: str,
     topic_id: str,
