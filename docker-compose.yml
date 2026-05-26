@@ -1,0 +1,40 @@
+services:
+  # ── Backend API ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"        # exposed for direct testing; remove in pure-proxy setups
+    environment:
+      # Required
+      DATABASE_URL:        ${DATABASE_URL}
+      ANTHROPIC_API_KEY:   ${ANTHROPIC_API_KEY}
+      # Auth — Supabase JWT verification
+      SUPABASE_URL:        ${SUPABASE_URL}
+      # Comma-separated list of allowed CORS origins
+      CORS_ORIGINS:        "http://localhost:3000,http://127.0.0.1:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend (nginx) ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Build-time env vars baked into the JS bundle.
+        # VITE_API_URL defaults to /api (proxied by nginx — no override needed).
+        VITE_SUPABASE_URL:      ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

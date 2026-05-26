@@ -1,0 +1,38 @@
+# ── Quest Frontend — React/Vite → nginx ─────────────────────────────────────
+
+# ── Stage 1: build ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Dependency layer — cached unless package-lock.json changes
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# Source
+COPY frontend/ .
+
+# Vite env vars are baked at build time.
+# Pass them via --build-arg in docker build or via docker-compose build.args.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+# Defaults to /api (nginx proxies /api → backend).
+# Override with full URL when backend is on a different host.
+ARG VITE_API_URL=/api
+
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY \
+    VITE_API_URL=$VITE_API_URL
+
+RUN npm run build
+
+# ── Stage 2: serve ───────────────────────────────────────────────────────────
+FROM nginx:alpine
+
+# Copy built assets
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Nginx config: SPA fallback + /api proxy to backend
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80

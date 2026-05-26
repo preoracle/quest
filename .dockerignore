@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+.venv/
+
+# Local databases — never bake into image (use DATABASE_URL)
+quest.db
+quest.db-shm
+quest.db-wal
+quest_checkpoints.db
+quest_checkpoints.db-shm
+quest_checkpoints.db-wal
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Frontend node_modules (copied separately inside Docker)
+frontend/node_modules/
+frontend/dist/
+
+# CLI history
+quest_cli_history/
+
+# Git
+.git/
+.gitignore
+
+# Docs (not needed at runtime)
+docs/
+
+# Tests
+tests/
+
+# Editor
+.vscode/
+.idea/
+*.swp
