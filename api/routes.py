@@ -31,7 +31,7 @@ from api.schemas import (
     UpdateTopicRequest,
 )
 from core.baseline_api import BaselineView, start_baseline, submit_baseline_answer
-from core.session_api import SessionView, get_session_view, start_session, submit_turn
+from core.session_api import SessionView, finish_session, get_session_view, start_session, submit_turn
 from core.topic_catalog import list_topic_catalog
 from core.topic_generator import generate_topic_payload, write_topic_yaml
 from core.topic_graph import TopicGraph, get_topic_graph, topic_mastery_summary
@@ -57,26 +57,59 @@ router = APIRouter()
 # "default" in dev (no SUPABASE_JWT_SECRET configured).
 # ---------------------------------------------------------------------------
 
-async def get_current_user(request: Request) -> str:
-    """Return the authenticated user_id from Supabase JWT, or 'default' in dev."""
+def _make_jwks_client():
+    """Build a PyJWKClient pointed at this project's Supabase JWKS endpoint."""
+    supabase_url = (
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("VITE_SUPABASE_URL", "")
+    ).rstrip("/")
+    if not supabase_url:
+        return None
+    import jwt as pyjwt  # noqa: PLC0415
+    return pyjwt.PyJWKClient(f"{supabase_url}/auth/v1/.well-known/jwks.json")
+
+
+_jwks_client = _make_jwks_client()
+
+
+class _AuthUser:
+    """Carries user_id + display name extracted from the JWT."""
+    def __init__(self, user_id: str, name: str):
+        self.user_id = user_id
+        self.name = name
+
+
+async def get_current_user(request: Request) -> _AuthUser:
+    """Return authenticated user info from Supabase JWT, or a 'default' sentinel in dev."""
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return "default"
+    if not auth.startswith("Bearer ") or _jwks_client is None:
+        return _AuthUser("default", "Default User")
     token = auth[7:]
-    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
-    if not jwt_secret:
-        return "default"  # dev mode: accept any request
     try:
         import jwt as pyjwt  # noqa: PLC0415
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
         payload = pyjwt.decode(
             token,
-            jwt_secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256", "HS256"],
             options={"verify_aud": False},
         )
-        return str(payload["sub"])
+        user_id = str(payload["sub"])
+        meta = payload.get("user_metadata") or {}
+        name = (
+            meta.get("full_name")
+            or meta.get("name")
+            or payload.get("email", "")
+            or "User"
+        )
+        return _AuthUser(user_id, str(name))
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
+
+
+def get_uid(auth: _AuthUser = Depends(get_current_user)) -> str:
+    """Convenience dependency — returns just the user_id string."""
+    return auth.user_id
 
 
 def _catalog_items(
@@ -86,7 +119,6 @@ def _catalog_items(
 ) -> list[TopicCatalogItem]:
     """Merge catalog rows with mastery rollups and lifecycle flags."""
     summaries = {s["topic_id"]: s for s in topic_mastery_summary(conn, user_id)}
-    last_study = queries.get_topic_last_study_at(conn, user_id)
     meta = queries.list_topic_metadata(conn)
     items: list[TopicCatalogItem] = []
     for row in rows:
@@ -104,7 +136,7 @@ def _catalog_items(
                 mastered_count=int(s.get("mastered_count") or 0),
                 avg_score_1_to_5=float(s.get("avg_score_1_to_5") or 0),
                 due_count=int(s.get("due_count") or 0),
-                last_studied_at=last_study.get(tid),
+                last_studied_at=s.get("last_studied_at"),
                 archived=bool(row.get("archived") or m.get("archived_at")),
                 pinned=bool(row.get("pinned") or m.get("pinned_at")),
                 user_created=bool(m.get("user_created")),
@@ -119,22 +151,22 @@ def list_available_topics(
     q: str = Query(default="", description="Search topics and concept previews"),
     include_archived: bool = Query(default=False),
     enrolled_only: bool = Query(default=False, description="Return only topics this user is enrolled in"),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
+    auth: _AuthUser = Depends(get_current_user),
 ) -> TopicCatalogResponse:
     """Return topic catalog with previews, search, and user progress rollups."""
     with queries.get_connection() as conn:
-        queries.get_or_create_user(conn, current_user)
+        queries.get_or_create_user(conn, current_user, name=auth.name)
         meta = queries.list_topic_metadata(conn)
         rows = search_topics(
             query=q,
             include_archived=include_archived,
             metadata=meta,
         )
-        if enrolled_only:
-            enrolled = queries.get_user_enrolled_topics(conn, current_user)
-            rows = [r for r in rows if r["id"] in enrolled]
-        items = _catalog_items(conn, current_user, rows)
         enrolled_ids = queries.get_user_enrolled_topics(conn, current_user)
+        if enrolled_only:
+            rows = [r for r in rows if r["id"] in enrolled_ids]
+        items = _catalog_items(conn, current_user, rows)
         for item in items:
             item.enrolled = item.id in enrolled_ids
     return TopicCatalogResponse(user_id=current_user, topics=items)
@@ -143,7 +175,7 @@ def list_available_topics(
 @router.get("/search/concepts", response_model=ConceptSearchResponse)
 def search_concepts(
     q: str = Query(..., min_length=1),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> ConceptSearchResponse:
     """Find concept names across topics matching a query string."""
     with queries.get_connection() as conn:
@@ -159,7 +191,7 @@ def search_concepts(
 @router.post("/topics/{topic_id}/enroll", response_model=dict)
 def enroll_in_topic(
     topic_id: str,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> dict:
     """Add a topic to the current user's enrolled quests."""
     with queries.get_connection() as conn:
@@ -171,7 +203,7 @@ def enroll_in_topic(
 @router.delete("/topics/{topic_id}/enroll", response_model=dict)
 def unenroll_from_topic(
     topic_id: str,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> dict:
     """Remove a topic from the current user's enrolled quests."""
     with queries.get_connection() as conn:
@@ -184,7 +216,7 @@ def unenroll_from_topic(
 def patch_topic(
     topic_id: str,
     body: UpdateTopicRequest,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> TopicLifecycleResponse:
     """Rename, update display name, archive, or pin a topic."""
     try:
@@ -234,7 +266,7 @@ def patch_topic(
 def remove_topic(
     topic_id: str,
     wipe_progress: bool = Query(default=True),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> TopicLifecycleResponse:
     """Delete a user-created topic and its progress."""
     try:
@@ -255,7 +287,7 @@ def remove_topic(
 @router.get("/topics/{topic_id}/graph", response_model=TopicGraph)
 def read_topic_graph(
     topic_id: str,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> TopicGraph:
     """Concept DAG with prerequisites and user mastery scores."""
     try:
@@ -269,7 +301,7 @@ def read_topic_graph(
 @router.get("/users/me/progress/summary", response_model=TopicSummaryResponse)
 def read_progress_summary(
     user_id: str = "default",
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> TopicSummaryResponse:
     """Per-topic mastery rollup for dashboard cards."""
     uid = current_user if current_user != "default" else user_id
@@ -332,7 +364,7 @@ def import_topic(body: ImportTopicRequest) -> TopicCreatedResponse:
 @router.post("/baseline", response_model=BaselineView)
 def create_baseline(
     body: StartBaselineRequest,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> BaselineView:
     """Start or resume baseline calibration; returns first question."""
     try:
@@ -357,11 +389,13 @@ def post_baseline_answer(session_id: str, body: BaselineAnswerRequest) -> Baseli
 @router.post("/sessions", response_model=SessionView)
 def create_session(
     body: StartSessionRequest,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
+    auth: _AuthUser = Depends(get_current_user),
 ) -> SessionView:
     """Start or resume a session; returns the pending tutor question."""
     try:
         with queries.get_connection() as conn:
+            queries.get_or_create_user(conn, current_user, name=auth.name)
             return start_session(
                 conn,
                 current_user,
@@ -374,11 +408,20 @@ def create_session(
 
 
 @router.get("/sessions/{session_id}", response_model=SessionView)
-def read_session(session_id: str) -> SessionView:
+def read_session(session_id: str, current_user: str = Depends(get_uid)) -> SessionView:
     """Return current session state from the graph checkpointer."""
     try:
+        # Brief ownership check — conn held for ms, released before Claude call
         with queries.get_connection() as conn:
-            return get_session_view(conn, session_id)
+            row = queries.get_session(conn, session_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Session not found")
+            if current_user != "default" and row.get("user_id") != current_user:
+                raise HTTPException(status_code=403, detail="Not your session")
+        # conn released — get_session_view manages its own connections around Claude
+        return get_session_view(session_id)
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -387,8 +430,8 @@ def read_session(session_id: str) -> SessionView:
 def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
     """Submit an answer; returns evaluator output and the next question (or completion)."""
     try:
-        with queries.get_connection() as conn:
-            return submit_turn(conn, session_id, body.answer)
+        # submit_turn manages its own connections — no conn held during Claude calls
+        return submit_turn(session_id, body.answer)
     except ValueError as exc:
         msg = str(exc)
         if "Unknown session" in msg:
@@ -403,7 +446,7 @@ def finish_session_route(session_id: str) -> SessionView:
     """End a session early and generate its report."""
     try:
         with queries.get_connection() as conn:
-            return session_api.finish_session(conn, session_id)
+            return finish_session(conn, session_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -444,7 +487,7 @@ def list_session_turns(session_id: str) -> list[TurnItem]:
 def read_due(
     user_id: str = "default",
     topic: str | None = Query(default=None, description="Filter by topic id"),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> DueResponse:
     """Return concepts due for SM-2 review."""
     uid = current_user if current_user != "default" else user_id
@@ -471,7 +514,7 @@ def read_due(
 def read_mastery(
     user_id: str = "default",
     topic: str | None = Query(default=None, description="Filter by topic id"),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_uid),
 ) -> MasteryResponse:
     """Return mastery rows for a user."""
     uid = current_user if current_user != "default" else user_id

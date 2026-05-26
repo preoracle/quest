@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import contextmanager
 from typing import Literal, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -75,28 +76,100 @@ class QuestState(TypedDict, total=False):
     session_report: dict | None
 
 
-def build_checkpointer():
-    """Create the LangGraph checkpointer — Postgres in prod, SQLite in dev."""
+# ---------------------------------------------------------------------------
+# Checkpointer — separate pool so graph ops don't block the app DB pool
+# ---------------------------------------------------------------------------
+
+_checkpointer_pool = None
+_sqlite_saver = None
+
+
+def _get_checkpointer_pool():
+    """Return (or create) the psycopg pool used exclusively for LangGraph checkpoints."""
+    global _checkpointer_pool
+    if _checkpointer_pool is not None:
+        return _checkpointer_pool
     db_url = os.environ.get("DATABASE_URL")
-    if db_url:
-        try:
-            from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
-            saver = PostgresSaver.from_conn_string(db_url)
-            saver.setup()
-            return saver
-        except ImportError:
-            pass  # fall back to SQLite if langgraph-checkpoint-postgres not installed
-    from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
-    path = queries.get_checkpoint_db_path()
-    conn = sqlite3.connect(str(path), check_same_thread=False)
-    return SqliteSaver(conn)
+    if not db_url:
+        return None
+    try:
+        from psycopg_pool import ConnectionPool  # noqa: PLC0415
+        from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
+        _checkpointer_pool = ConnectionPool(
+            db_url,
+            min_size=1,
+            max_size=5,
+            # autocommit + no prepared statements: required for Supabase
+            # Transaction Pooler (PgBouncer transaction mode).
+            kwargs={"autocommit": True, "prepare_threshold": None},
+        )
+        # Create checkpoint tables once at startup
+        with _checkpointer_pool.connection() as conn:
+            PostgresSaver(conn).setup()
+    except ImportError as exc:
+        raise ImportError(
+            "DATABASE_URL is set but psycopg[pool] or langgraph-checkpoint-postgres "
+            "is not installed."
+        ) from exc
+    return _checkpointer_pool
 
 
-def build_quest_graph(
-    conn,
-    checkpointer,
-):
-    """Compile the Quest StateGraph with DB-aware nodes.
+@contextmanager
+def checkpointer_session():
+    """Context manager that yields a ready LangGraph checkpointer.
+
+    Postgres: checks a connection out of the dedicated checkpointer pool,
+    wraps it in PostgresSaver, then returns it to the pool on exit.
+    SQLite (dev): yields the shared SqliteSaver singleton.
+
+    Each concurrent graph.invoke() / graph.get_state() gets its OWN
+    connection, making concurrent sessions fully thread-safe.
+    """
+    pool = _get_checkpointer_pool()
+    if pool is None:
+        # Dev: SQLite — single-connection saver is fine for sequential dev use
+        global _sqlite_saver
+        if _sqlite_saver is None:
+            from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
+            path = queries.get_checkpoint_db_path()
+            conn = sqlite3.connect(str(path), check_same_thread=False)
+            _sqlite_saver = SqliteSaver(conn)
+        yield _sqlite_saver
+        return
+
+    from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
+    conn = pool.getconn()
+    try:
+        yield PostgresSaver(conn)
+    finally:
+        pool.putconn(conn)
+
+
+# Backwards-compat: callers that used get_checkpointer() directly
+# now need to use the checkpointer_session() context manager.
+def get_checkpointer():
+    """Deprecated — use checkpointer_session() context manager instead.
+
+    Returns the checkpointer pool sentinel; only useful for callers that
+    haven't been migrated yet (will be removed).
+    """
+    raise RuntimeError(
+        "get_checkpointer() is no longer supported. "
+        "Use `with checkpointer_session() as cp:` instead."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Graph builder — nodes own their own short-lived DB connections
+# ---------------------------------------------------------------------------
+
+def build_quest_graph(checkpointer):
+    """Compile the Quest StateGraph.
+
+    Each graph node opens its OWN connection from the shared app pool for the
+    brief SQL it needs (ms-level reads/writes), then releases it immediately.
+    No connection is held during Claude API calls, so the pool is never
+    saturated by slow LLM latency.
 
     Returns a compiled graph. Use thread_id = session_id in config.
     """
@@ -106,17 +179,18 @@ def build_quest_graph(
         """Select the next due, unmastered concept with satisfied prerequisites."""
         topic_id = state["topic_id"]
         user_id = state["user_id"]
-        concepts = queries.get_topic_concepts(conn, topic_id)
-        if state.get("replay_mode"):
-            completed = set(state.get("completed_concept_ids") or [])
-            nxt = pick_next_concept_replay(concepts, topic_id, completed)
-        else:
-            scores, reviews, eval_counts = queries.get_mastery_maps(
-                conn, user_id, topic_id,
-            )
-            nxt = pick_next_concept(
-                concepts, topic_id, scores, reviews, eval_counts=eval_counts,
-            )
+        with queries.get_connection() as conn:
+            concepts = queries.get_topic_concepts(conn, topic_id)
+            if state.get("replay_mode"):
+                completed = set(state.get("completed_concept_ids") or [])
+                nxt = pick_next_concept_replay(concepts, topic_id, completed)
+            else:
+                scores, reviews, eval_counts = queries.get_mastery_maps(
+                    conn, user_id, topic_id,
+                )
+                nxt = pick_next_concept(
+                    concepts, topic_id, scores, reviews, eval_counts=eval_counts,
+                )
         if nxt is None:
             return {
                 "session_complete": True,
@@ -157,7 +231,9 @@ def build_quest_graph(
             )
             if scope:
                 steer += f" Probe scope (shape the question; do not quote verbatim): {scope}"
-            prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=2)
+            # Brief read — connection held for ms, released before Claude call
+            with queries.get_connection() as conn:
+                prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=2)
             if prior:
                 snippets = " | ".join(s[:280] for s in prior)
                 steer += (
@@ -169,6 +245,7 @@ def build_quest_graph(
         else:
             invoke_history = persisted
 
+        # Claude API call — NO database connection held during this
         chain = build_socratic_chain(topic=topic_id)
         response = chain.invoke({"history": invoke_history})
         tutor_text = message_content(response)
@@ -179,7 +256,9 @@ def build_quest_graph(
             new_history = persisted + [AIMessage(content=tutor_text)]
 
         turn_idx = state.get("turn_idx", 0)
-        queries.record_turn(conn, state["session_id"], turn_idx, "tutor", tutor_text)
+        # Brief write — new connection, released immediately after
+        with queries.get_connection() as conn:
+            queries.record_turn(conn, state["session_id"], turn_idx, "tutor", tutor_text)
 
         return {
             "history": messages_to_dicts(new_history),
@@ -189,7 +268,7 @@ def build_quest_graph(
         }
 
     def wait_for_user(state: QuestState) -> dict:
-        """Pause until the CLI supplies the student's answer."""
+        """Pause until the student submits their answer."""
         answer = interrupt(state.get("tutor_message", ""))
         return {"user_input": str(answer)}
 
@@ -203,23 +282,27 @@ def build_quest_graph(
             history=state.get("history"),
             mode=get_eval_mode(),
         )
+        # Claude evaluator call — NO database connection held during this
         evaluation: EvaluatorOutput = evaluator.invoke(payload)
         turn_idx = state.get("turn_idx", 0)
         concept_id = state.get("current_concept_id") or evaluation.inferred_concept_id
-        queries.record_turn(
-            conn,
-            state["session_id"],
-            turn_idx,
-            "user",
-            state["user_input"],
-            evaluator_score=evaluation.score,
-            evaluator_gaps=evaluation.gaps,
-            evaluator_reasoning=evaluation.reasoning,
-            evaluator_concept_id=concept_id,
-            evaluator_concept_confidence=(
-                1.0 if state.get("current_concept_id") else evaluation.inferred_concept_confidence
-            ),
-        )
+        # Brief write
+        with queries.get_connection() as conn:
+            queries.record_turn(
+                conn,
+                state["session_id"],
+                turn_idx,
+                "user",
+                state["user_input"],
+                evaluator_score=evaluation.score,
+                evaluator_gaps=evaluation.gaps,
+                evaluator_reasoning=evaluation.reasoning,
+                evaluator_concept_id=concept_id,
+                evaluator_concept_confidence=(
+                    1.0 if state.get("current_concept_id")
+                    else evaluation.inferred_concept_confidence
+                ),
+            )
         history = messages_from_dicts(state.get("history") or [])
         history.append(HumanMessage(content=state["user_input"]))
 
@@ -234,13 +317,14 @@ def build_quest_graph(
         """Persist mastery + SM-2 from the latest evaluation."""
         raw = state.get("last_evaluation")
         if raw:
-            apply_evaluation_to_mastery(
-                conn,
-                state["user_id"],
-                state["topic_id"],
-                EvaluatorOutput.model_validate(raw),
-                current_concept_id=state.get("current_concept_id"),
-            )
+            with queries.get_connection() as conn:
+                apply_evaluation_to_mastery(
+                    conn,
+                    state["user_id"],
+                    state["topic_id"],
+                    EvaluatorOutput.model_validate(raw),
+                    current_concept_id=state.get("current_concept_id"),
+                )
         return {"concept_turn_count": state.get("concept_turn_count", 0) + 1}
 
     def decide(state: QuestState) -> dict:
@@ -261,20 +345,21 @@ def build_quest_graph(
     def summarize(state: QuestState) -> dict:
         """End session: structured report + optional narrative summary."""
         session_id = state["session_id"]
-        from core.topics import load_topic
+        from core.topics import load_topic  # noqa: PLC0415
 
         topic_id = state["topic_id"]
         display = load_topic(topic_id).get("display_name") or topic_id
-        summary = summarize_session(conn, session_id, display)
-        report = build_session_report(
-            conn,
-            session_id,
-            topic_id,
-            display,
-            narrative=summary,
-        )
-        queries.set_session_report(conn, session_id, report.model_dump_json())
-        queries.end_session(conn, session_id)
+        with queries.get_connection() as conn:
+            summary = summarize_session(conn, session_id, display)
+            report = build_session_report(
+                conn,
+                session_id,
+                topic_id,
+                display,
+                narrative=summary,
+            )
+            queries.set_session_report(conn, session_id, report.model_dump_json())
+            queries.end_session(conn, session_id)
         return {
             "done": True,
             "session_report": report.model_dump(),
@@ -319,7 +404,7 @@ def seed_state_from_turns(
     topic_id: str,
     concept_list: list[dict],
 ) -> QuestState:
-    """Rebuild graph state from SQLite turns when checkpoint is missing."""
+    """Rebuild graph state from DB turns when checkpoint is missing."""
     turns = queries.get_turns_for_session(conn, session_id)
     history: list[dict] = []
     last_tutor: str | None = None

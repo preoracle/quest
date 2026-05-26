@@ -11,7 +11,7 @@ import sqlite3
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from core.graph import build_checkpointer, build_quest_graph, seed_state_from_turns
+from core.graph import checkpointer_session, build_quest_graph, seed_state_from_turns
 from core.models import EvaluatorOutput
 from core.session_report import SessionReport, build_session_report, report_from_json
 from core.topics import load_topic
@@ -91,7 +91,7 @@ def _values_to_view(
         waiting_for_answer=waiting and not done,
         focus=values.get("current_concept_name"),
         focus_scope=values.get("current_concept_scope"),
-        tutor_message=tutor if waiting or done else None,
+        tutor_message=tutor,  # always expose — frontend guards on waiting_for_answer
         last_evaluation=evaluation,
         summary=summary,
         report=report,
@@ -129,38 +129,103 @@ def finish_session(conn: sqlite3.Connection, session_id: str) -> SessionView:
     )
 
 
-def get_session_view(conn: sqlite3.Connection, session_id: str) -> SessionView:
+def _initial_graph_state(
+    session_id: str,
+    user_id: str,
+    topic_id: str,
+    concept_list: list[dict],
+    *,
+    replay_mode: bool = False,
+) -> dict:
+    """Build the initial state dict for a brand-new LangGraph session."""
+    return {
+        "user_id": user_id,
+        "topic_id": topic_id,
+        "session_id": session_id,
+        "concept_list": concept_list,
+        "turn_idx": 0,
+        "history": [],
+        "concept_turn_count": 0,
+        "done": False,
+        "session_complete": False,
+        "replay_mode": replay_mode,
+        "completed_concept_ids": [],
+        "advance_concept": False,
+        "last_score": None,
+        "last_evaluation": None,
+        "session_report": None,
+        "current_concept_id": None,
+        "current_concept_name": None,
+        "current_concept_scope": None,
+        "tutor_message": None,
+        "user_input": None,
+        "last_tutor_question": None,
+    }
+
+
+def get_session_view(session_id: str) -> SessionView:
     """Return the current graph/DB view for a session.
 
+    If the session has no checkpoint state yet (POST /sessions created the DB
+    record but hasn't run the graph), this call triggers the graph — including
+    the first Claude call — so the SessionPage skeleton shows during the wait
+    instead of blocking the session-start request.
+
     Raises ValueError if the session id does not exist.
+    No DB connection is held during Claude API calls.
     """
-    row = queries.get_session(conn, session_id)
-    if row is None:
-        raise ValueError(f"Unknown session: {session_id}")
+    # Brief DB read — connection held for ms, released before any Claude call
+    with queries.get_connection() as conn:
+        row = queries.get_session(conn, session_id)
+        if row is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        topic_data = load_topic(row["topic"])
+        display = topic_data.get("display_name") or row["topic"]
 
-    topic_data = load_topic(row["topic"])
-    display = topic_data.get("display_name") or row["topic"]
+    with checkpointer_session() as checkpointer:
+        graph = build_quest_graph(checkpointer)
+        config = _graph_config(session_id)
+        snapshot = graph.get_state(config)
+        values = snapshot.values or {}
 
-    checkpointer = build_checkpointer()
-    graph = build_quest_graph(conn, checkpointer)
-    config = _graph_config(session_id)
-    snapshot = graph.get_state(config)
-    values = snapshot.values or {}
+        # Ended session with no graph state — return from DB only
+        if not values and row.get("ended_at"):
+            return SessionView(
+                session_id=session_id,
+                user_id=row["user_id"],
+                topic_id=row["topic"],
+                topic_display=display,
+                done=True,
+                summary=row.get("summary_text"),
+                report=report_from_json(row.get("report_json")),
+                ended_at=row["ended_at"],
+            )
 
-    waiting = bool(snapshot.next)
-    if not values and row["ended_at"]:
-        return SessionView(
-            session_id=session_id,
-            user_id=row["user_id"],
-            topic_id=row["topic"],
-            topic_display=display,
-            done=True,
-            summary=row.get("summary_text"),
-            report=report_from_json(row.get("report_json")),
-            ended_at=row["ended_at"],
-        )
+        # No graph state yet — session was created by POST /sessions but not yet
+        # initialised (first-question generation deferred).  Run the graph now so
+        # the Claude call happens here while the SessionPage shows its skeleton.
+        if not values and not row.get("ended_at"):
+            # Brief write before Claude call — own connection, released immediately
+            with queries.get_connection() as conn:
+                concept_list = queries.upsert_topic_concepts(conn, topic_data)
+                queries.get_or_create_user(conn, row["user_id"])
+            # NO connection held during graph.invoke() (Claude API call)
+            replay_mode = row.get("session_kind") == "replay"
+            graph.invoke(
+                _initial_graph_state(
+                    session_id,
+                    row["user_id"],
+                    row["topic"],
+                    concept_list,
+                    replay_mode=replay_mode,
+                ),
+                config,
+            )
+            snapshot = graph.get_state(config)
+            values = snapshot.values or {}
 
-    return _values_to_view(values, row, display, waiting=waiting)
+        waiting = bool(snapshot.next)
+        return _values_to_view(values, row, display, waiting=waiting)
 
 
 def start_session(
@@ -171,14 +236,15 @@ def start_session(
     resume: bool = True,
     replay: bool = False,
 ) -> SessionView:
-    """Create or resume a session and return the first pending question.
+    """Create or resume a session.
 
-    Runs the graph until it interrupts at `wait_for_user` or completes.
-    When `resume` is True, reuses an open session for (user_id, topic_id).
+    For NEW sessions this returns immediately (no Claude call) — the graph is
+    initialised lazily on the first GET /sessions/:id so the session-start
+    button is instant and the Claude wait happens behind the SessionPage
+    skeleton instead.
 
-    When ``replay`` is True, starts a **new** session that walks the concept DAG
-    from scratch for this run (scheduling ignores stored mastery). DB mastery
-    still updates. Implies ``resume`` does not reuse an open session.
+    For RESUMED sessions (existing open session) the graph state is
+    reconstructed from stored turns (fast, no Claude call).
     """
     topic_data = load_topic(topic_id)
     display = topic_data.get("display_name") or topic_id
@@ -188,97 +254,99 @@ def start_session(
 
     want_resume = resume and not replay
     open_id = queries.get_open_session(conn, user_id, topic_id) if want_resume else None
+
     if open_id:
+        # ── RESUME: existing open session ─────────────────────────────────
         session_id = open_id
-        resuming = True
-    else:
-        if not want_resume:
-            queries.close_open_study_sessions(conn, user_id, topic_id)
-        session_id = queries.create_session(conn, user_id, topic_id)
-        resuming = False
+        with checkpointer_session() as checkpointer:
+            graph = build_quest_graph(checkpointer)
+            config = _graph_config(session_id)
+            snapshot = graph.get_state(config)
 
-    checkpointer = build_checkpointer()
-    graph = build_quest_graph(conn, checkpointer)
-    config = _graph_config(session_id)
-
-    snapshot = graph.get_state(config)
-    if not snapshot.values:
-        if resuming:
-            row = queries.get_session(conn, session_id)
-            if row and row.get("session_kind") != "study":
-                raise ValueError(
-                    f"Session {session_id} is not a study session; "
-                    "start a new session instead."
+            if not snapshot.values:
+                # Checkpoint gone (e.g. DB wiped) — rebuild from stored turns
+                row = queries.get_session(conn, session_id)
+                if row and row.get("session_kind") not in ("study", "replay"):
+                    raise ValueError(
+                        f"Session {session_id} is not a study session; "
+                        "start a new session instead."
+                    )
+                state = seed_state_from_turns(
+                    conn, session_id, user_id, topic_id, concept_list
                 )
-            state = seed_state_from_turns(
-                conn, session_id, user_id, topic_id, concept_list
-            )
-            graph.update_state(config, state)
-        else:
-            graph.invoke(
-                {
-                    "user_id": user_id,
-                    "topic_id": topic_id,
-                    "session_id": session_id,
-                    "concept_list": concept_list,
-                    "turn_idx": 0,
-                    "history": [],
-                    "concept_turn_count": 0,
-                    "done": False,
-                    "session_complete": False,
-                    "replay_mode": replay,
-                    "completed_concept_ids": [],
-                },
-                config,
+                graph.update_state(config, state)
+                snapshot = graph.get_state(config)
+
+            row = queries.get_session(conn, session_id)
+            if row is None:
+                raise ValueError(f"Unknown session: {session_id}")
+            return _values_to_view(
+                snapshot.values or {},
+                row,
+                display,
+                waiting=bool(snapshot.next),
             )
 
-    snapshot = graph.get_state(config)
+    # ── NEW session ───────────────────────────────────────────────────────
+    if not want_resume:
+        queries.close_open_study_sessions(conn, user_id, topic_id)
+
+    kind = "replay" if replay else "study"
+    session_id = queries.create_session(conn, user_id, topic_id, session_kind=kind)
     row = queries.get_session(conn, session_id)
-    if row is None:
-        raise ValueError(f"Unknown session: {session_id}")
-    return _values_to_view(
-        snapshot.values or {},
-        row,
-        display,
-        waiting=bool(snapshot.next),
+
+    # Return a pending view immediately — graph.invoke() (the slow Claude call)
+    # is deferred to the first GET /sessions/:id call in get_session_view().
+    return SessionView(
+        session_id=session_id,
+        user_id=user_id,
+        topic_id=topic_id,
+        topic_display=display,
+        done=False,
+        waiting_for_answer=False,  # Not yet — will be True after first GET
+        tutor_message=None,
     )
 
 
 def submit_turn(
-    conn: sqlite3.Connection,
     session_id: str,
     answer: str,
 ) -> SessionView:
     """Submit a student answer and advance the graph to the next question or end.
 
     Raises ValueError if the session is unknown, ended, or not waiting for input.
+    No DB connection is held during Claude API calls (evaluator + tutor).
     """
-    row = queries.get_session(conn, session_id)
-    if row is None:
-        raise ValueError(f"Unknown session: {session_id}")
-    if row["ended_at"]:
-        raise ValueError(f"Session already ended: {session_id}")
+    # Brief validation read — connection held for ms, released before Claude
+    with queries.get_connection() as conn:
+        row = queries.get_session(conn, session_id)
+        if row is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        if row["ended_at"]:
+            raise ValueError(f"Session already ended: {session_id}")
+        topic_data = load_topic(row["topic"])
+        display = topic_data.get("display_name") or row["topic"]
 
-    topic_data = load_topic(row["topic"])
-    display = topic_data.get("display_name") or row["topic"]
+    with checkpointer_session() as checkpointer:
+        graph = build_quest_graph(checkpointer)
+        config = _graph_config(session_id)
+        snapshot = graph.get_state(config)
 
-    checkpointer = build_checkpointer()
-    graph = build_quest_graph(conn, checkpointer)
-    config = _graph_config(session_id)
-    snapshot = graph.get_state(config)
+        if not snapshot.next:
+            raise ValueError("Session is not waiting for an answer")
 
-    if not snapshot.next:
-        raise ValueError("Session is not waiting for an answer")
+        # NO connection held during graph.invoke() (evaluator + tutor Claude calls)
+        graph.invoke(Command(resume=answer.strip()), config)
 
-    graph.invoke(Command(resume=answer.strip()), config)
-
-    snapshot = graph.get_state(config)
-    row = queries.get_session(conn, session_id)
-    if row is None:
-        raise ValueError(f"Unknown session: {session_id}")
-    return _values_to_view(
-        snapshot.values or {},
-        row,
-        display,
-        waiting=bool(snapshot.next),
-    )
+        snapshot = graph.get_state(config)
+        # Brief read after graph completes
+        with queries.get_connection() as conn:
+            row = queries.get_session(conn, session_id)
+            if row is None:
+                raise ValueError(f"Unknown session: {session_id}")
+        return _values_to_view(
+            snapshot.values or {},
+            row,
+            display,
+            waiting=bool(snapshot.next),
+        )
