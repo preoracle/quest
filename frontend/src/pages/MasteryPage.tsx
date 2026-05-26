@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   fetchDue,
   fetchMastery,
@@ -10,6 +11,7 @@ import {
 import type { MasteryItem, TopicGraph, TopicSummary } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
 import { ConceptGraph } from "@/components/ConceptGraph";
+import { MasterySkeleton } from "@/components/Skeleton";
 import { PageScaffold } from "@/components/PageScaffold";
 import { MasteryTicks } from "@/components/MasteryTicks";
 import { Button } from "@/components/ui/button";
@@ -29,33 +31,39 @@ function groupByTopic(items: MasteryItem[]): Map<string, MasteryItem[]> {
 export function MasteryPage() {
   const [params, setParams] = useSearchParams();
   const selectedTopic = params.get("topic");
-
-  const [summaries, setSummaries] = useState<TopicSummary[]>([]);
-  const [dueCount, setDueCount] = useState(0);
-  const [items, setItems] = useState<MasteryItem[]>([]);
-  const [graph, setGraph] = useState<TopicGraph | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showScores, setShowScores] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      fetchProgressSummary(),
-      fetchDue(),
-      fetchMastery(selectedTopic ?? undefined),
-      selectedTopic ? fetchTopicGraph(selectedTopic) : Promise.resolve(null),
-    ])
-      .then(([sum, due, mastery, g]) => {
-        setSummaries(sum.topics);
-        setDueCount(due.items.length);
-        setItems(mastery.items.filter((i) => i.kind === "concept"));
-        setGraph(g);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed"))
-      .finally(() => setLoading(false));
-  }, [selectedTopic]);
+  const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useQuery({
+    queryKey: ["progress-summary"],
+    queryFn: () => fetchProgressSummary(),
+    staleTime: 30_000,
+  });
+
+  const { data: dueData } = useQuery({
+    queryKey: ["due"],
+    queryFn: () => fetchDue(),
+    staleTime: 60_000,
+  });
+
+  const { data: masteryData, isLoading: masteryLoading } = useQuery({
+    queryKey: ["mastery", selectedTopic ?? ""],
+    queryFn: () => fetchMastery(selectedTopic ?? undefined),
+    staleTime: 30_000,
+  });
+
+  const { data: graphData, isLoading: graphLoading } = useQuery({
+    queryKey: ["topic-graph", selectedTopic],
+    queryFn: () => (selectedTopic ? fetchTopicGraph(selectedTopic) : Promise.resolve(null)),
+    staleTime: 60_000,
+    enabled: !!selectedTopic,
+  });
+
+  const summaries: TopicSummary[] = summaryData?.topics ?? [];
+  const dueCount = dueData?.items.length ?? 0;
+  const items: MasteryItem[] = (masteryData?.items ?? []).filter((i) => i.kind === "concept");
+  const graph: TopicGraph | null = graphData ?? null;
+
+  const loading = summaryLoading || masteryLoading || (!!selectedTopic && graphLoading);
 
   const rollup = useMemo(() => {
     const totalConcepts = summaries.reduce((n, s) => n + s.concept_count, 0);
@@ -78,10 +86,11 @@ export function MasteryPage() {
       }
     >
       <PageScaffold tier="wide">
-        {loading && <p className="text-sm text-on-muted">Loading…</p>}
-        {error && (
+        {loading && <MasterySkeleton />}
+
+        {!loading && summaryError && (
           <p className="rounded-xl border border-score-low/30 px-4 py-3 text-sm text-score-low">
-            {error}
+            {summaryError instanceof Error ? summaryError.message : "Failed to load"}
           </p>
         )}
 
@@ -137,7 +146,7 @@ export function MasteryPage() {
               ))}
             </div>
 
-            {summaries.length === 0 && !error && (
+            {summaries.length === 0 && !summaryError && (
               <p className="py-page text-center text-sm text-on-muted">
                 No progress yet.{" "}
                 <Link to="/topics" className="text-accent hover:underline">
@@ -148,7 +157,7 @@ export function MasteryPage() {
           </div>
         )}
 
-        {selectedTopic && (
+        {!loading && selectedTopic && (
           <div className={cn("flex flex-col", sectionGap)}>
             <Button variant="outline" size="sm" className="w-fit" onClick={() => setParams({})}>
               ← Overview

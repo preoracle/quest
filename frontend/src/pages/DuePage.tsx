@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { fetchDue, startSession } from "@/api/client";
 import type { DueItem } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
+import { DueSkeleton } from "@/components/Skeleton";
 import { PageScaffold } from "@/components/PageScaffold";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { Button } from "@/components/ui/button";
@@ -106,7 +107,7 @@ export function DuePage() {
   return (
     <AppShell>
       <PageScaffold toolbar={toolbar} tier="catalog">
-        {isLoading && <p className="text-sm text-on-muted">Loading…</p>}
+        {isLoading && <DueSkeleton />}
         {error && (
           <p className="rounded-xl border border-score-low/30 bg-score-low/10 px-4 py-3 text-sm text-score-low">
             {error instanceof Error ? error.message : "Failed to load"}

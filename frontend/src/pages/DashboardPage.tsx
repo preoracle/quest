@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { fetchDue, fetchTopics, startSession } from "@/api/client";
 import { AppShell } from "@/components/AppShell";
+import { DashboardSkeleton } from "@/components/Skeleton";
 import { PageScaffold } from "@/components/PageScaffold";
 import { Button } from "@/components/ui/button";
 import { sectionGap } from "@/lib/layout";
@@ -94,7 +95,7 @@ export function DashboardPage() {
     staleTime: 60_000,
   });
 
-  const { data: topicsData } = useQuery({
+  const { data: topicsData, isLoading: topicsLoading } = useQuery({
     queryKey: ["topics", "", false],
     queryFn: () => fetchTopics({ q: "", includeArchived: false }),
     staleTime: 30_000,
@@ -154,7 +155,8 @@ export function DashboardPage() {
   return (
     <AppShell>
       <PageScaffold tier="wide">
-        <div className={cn("flex flex-col", sectionGap)}>
+        {topicsLoading && <DashboardSkeleton />}
+        <div className={cn("flex flex-col", sectionGap, topicsLoading && "hidden")}>
 
           {/* Greeting + streak */}
           <motion.div

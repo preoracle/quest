@@ -260,6 +260,10 @@ export function SessionPage() {
           <ContentTrack tier="reading" className="flex flex-col gap-section">
             <Skeleton className="h-24 w-full rounded-2xl" />
             <Skeleton className="h-16 w-full rounded-xl" />
+            <div className="flex items-center gap-2 text-xs text-on-muted/50">
+              <span className="size-3 animate-spin rounded-full border border-line border-t-accent" />
+              Generating your first question…
+            </div>
           </ContentTrack>
         </div>
       )}
