@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ChevronRight, Play } from "lucide-react";
+import { BookmarkMinus, BookmarkPlus, ChevronRight, Play } from "lucide-react";
 import type { TopicCatalogItem } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,12 @@ interface TopicRowProps {
   topic: TopicCatalogItem;
   busy: boolean;
   onContinue: () => void;
+  onToggleEnroll?: () => void;
+  enrollBusy?: boolean;
 }
 
 /** Catalog row — single band: content + actions aligned center. */
-export function TopicRow({ topic, busy, onContinue }: TopicRowProps) {
+export function TopicRow({ topic, busy, onContinue, onToggleEnroll, enrollBusy }: TopicRowProps) {
   const progressPct =
     topic.concept_count > 0
       ? Math.round((topic.mastered_count / topic.concept_count) * 100)
@@ -71,6 +73,26 @@ export function TopicRow({ topic, busy, onContinue }: TopicRowProps) {
       </Link>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {onToggleEnroll && (
+          <button
+            type="button"
+            disabled={enrollBusy}
+            onClick={(e) => { e.preventDefault(); onToggleEnroll(); }}
+            className={cn(
+              "flex size-8 items-center justify-center rounded-lg transition-colors",
+              "disabled:pointer-events-none disabled:opacity-40",
+              topic.enrolled
+                ? "text-accent hover:bg-accent/10"
+                : "text-on-muted hover:bg-surface-muted hover:text-accent",
+            )}
+            aria-label={topic.enrolled ? "Remove from my topics" : "Add to my topics"}
+            title={topic.enrolled ? "Remove from my topics" : "Add to my topics"}
+          >
+            {topic.enrolled
+              ? <BookmarkMinus className="size-4" />
+              : <BookmarkPlus className="size-4" />}
+          </button>
+        )}
         <Button
           size="sm"
           disabled={busy}

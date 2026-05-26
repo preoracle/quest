@@ -19,9 +19,9 @@ _PG_SCHEMA_PATH = Path(__file__).resolve().parent / "schema.pg.sql"
 DEFAULT_TOPICS: list[str] = [
     "rag_pipeline",
     "tool_calling_agents",
-    "prompt_engineering",
     "embeddings_vector_search",
-    "system_design_interview",
+    "model_context_protocol",
+    "memory_systems",
 ]
 
 
@@ -109,6 +109,10 @@ def namespace_concept_id(topic_id: str, local_id: str) -> str:
     return f"{topic_id}:{local_id}"
 
 
+# In-memory set of user IDs confirmed to exist — avoids a DB round-trip on every request.
+_known_users: set[str] = set()
+
+
 def get_or_create_user(
     conn,
     user_id: str = "default",
@@ -117,7 +121,10 @@ def get_or_create_user(
     """Ensure a user row exists and return the user id.
 
     Seeds DEFAULT_TOPICS enrollment on first creation.
+    Uses an in-memory cache to skip the DB check on subsequent calls.
     """
+    if user_id in _known_users:
+        return user_id
     row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
     if row is None:
         conn.execute(
@@ -126,6 +133,7 @@ def get_or_create_user(
         )
         conn.commit()
         seed_default_topics(conn, user_id)
+    _known_users.add(user_id)
     return user_id
 
 
@@ -196,7 +204,7 @@ def create_session(
     session_kind: str = "study",
 ) -> str:
     """Insert a new session row and return its id."""
-    if session_kind not in ("study", "baseline"):
+    if session_kind not in ("study", "baseline", "replay"):
         raise ValueError(f"Invalid session_kind: {session_kind}")
     sid = session_id or str(uuid.uuid4())
     conn.execute(
@@ -403,7 +411,13 @@ def get_topic_last_study_at(
         """,
         (user_id,),
     ).fetchall()
-    return {row["topic"]: row["last_at"] for row in rows}
+    def _to_iso(v):
+        if v is None:
+            return None
+        if hasattr(v, "isoformat"):
+            return v.isoformat()
+        return str(v)
+    return {row["topic"]: _to_iso(row["last_at"]) for row in rows}
 
 
 def get_topic_concepts(conn: sqlite3.Connection, topic_id: str) -> list[dict]:

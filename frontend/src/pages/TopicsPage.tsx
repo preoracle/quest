@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { fetchDue, fetchTopics, startSession } from "@/api/client";
-import type { StartMode } from "@/api/types";
+import { enrollTopic, fetchDue, fetchTopics, startSession, unenrollTopic } from "@/api/client";
+import type { StartMode, TopicCatalogItem } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
 import { CreateTopicPanel } from "@/components/CreateTopicPanel";
 import { FilterChips } from "@/components/FilterChips";
@@ -39,10 +39,12 @@ const FILTERS: { id: TopicFilter; label: string }[] = [
 export function TopicsPage() {
   const navigate = useNavigate();
   const reduce = useReducedMotion();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [starting, setStarting] = useState<string | null>(null);
   const [showAllLibrary, setShowAllLibrary] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [enrollBusy, setEnrollBusy] = useState<string | null>(null);
 
   // URL-encoded persistent state
   const urlQuery = searchParams.get("q") ?? "";
@@ -146,6 +148,24 @@ export function TopicsPage() {
     }
   }
 
+  async function toggleEnroll(topic: TopicCatalogItem) {
+    setEnrollBusy(topic.id);
+    try {
+      if (topic.enrolled) {
+        await unenrollTopic(topic.id);
+        toast.success(`Removed "${topic.display_name}" from your topics`);
+      } else {
+        await enrollTopic(topic.id);
+        toast.success(`Added "${topic.display_name}" to your topics`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update enrollment");
+    } finally {
+      setEnrollBusy(null);
+    }
+  }
+
   const toolbar = (
     <div className={cn("flex flex-col", sectionGap)}>
       <div className="flex items-center gap-3">
@@ -221,14 +241,14 @@ export function TopicsPage() {
         ) : (
           <div className={cn("flex flex-col", sectionGap)}>
             {sections.pickUp.length > 0 && (
-              <Section topics={sections.pickUp} label="Pick up" reduce={reduce} starting={starting} onContinue={begin} />
+              <Section topics={sections.pickUp} label="Pick up" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
             )}
             {sections.explore.length > 0 && (
-              <Section topics={sections.explore} label="Explore" reduce={reduce} starting={starting} onContinue={begin} />
+              <Section topics={sections.explore} label="Explore" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
             )}
             {libraryVisible.length > 0 && (
               <>
-                <Section topics={libraryVisible} label="Library" reduce={reduce} starting={starting} onContinue={begin} />
+                <Section topics={libraryVisible} label="Library" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
                 {sections.library.length > LIBRARY_CAP && !showAllLibrary && (
                   <button
                     type="button"
@@ -252,13 +272,17 @@ function Section({
   topics,
   reduce,
   starting,
+  enrollBusy,
   onContinue,
+  onToggleEnroll,
 }: {
   label: string;
   topics: ReturnType<typeof rankTopics>;
   reduce: boolean | null;
   starting: string | null;
+  enrollBusy: string | null;
   onContinue: (id: string, mode: StartMode) => void;
+  onToggleEnroll: (topic: TopicCatalogItem) => void;
 }) {
   return (
     <section>
@@ -278,6 +302,8 @@ function Section({
               topic={t}
               busy={starting === t.id}
               onContinue={() => onContinue(t.id, "resume")}
+              onToggleEnroll={() => onToggleEnroll(t)}
+              enrollBusy={enrollBusy === t.id}
             />
           </motion.div>
         ))}

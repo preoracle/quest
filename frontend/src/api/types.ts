@@ -15,6 +15,7 @@ export interface TopicCatalogItem {
   avg_score_1_to_5: number;
   due_count: number;
   last_studied_at: string | null;
+  enrolled?: boolean;
   archived?: boolean;
   pinned?: boolean;
   user_created?: boolean;

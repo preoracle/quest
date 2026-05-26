@@ -66,10 +66,11 @@ export function HomePage() {
   useLenis(ready);
 
   useEffect(() => {
+    if (!user) return;
     fetchDue()
       .then((d) => setDueCount(d.items.length))
       .catch(() => setDueCount(0));
-  }, []);
+  }, [user]);
 
   return (
     <>
