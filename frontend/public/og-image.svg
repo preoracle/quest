@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d0d14"/>
+      <stop offset="100%" stop-color="#060608"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="600" y1="0" x2="600" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d4a853" stop-opacity="0.12"/>
+      <stop offset="60%" stop-color="#d4a853" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#e8c47a"/>
+      <stop offset="100%" stop-color="#c49840"/>
+    </linearGradient>
+    <radialGradient id="radial" cx="600" cy="200" r="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d4a853" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#d4a853" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#radial)"/>
+
+  <!-- Grid lines (subtle) -->
+  <g stroke="#1e1e28" stroke-width="1" opacity="0.6">
+    <line x1="0" y1="105" x2="1200" y2="105"/>
+    <line x1="0" y1="210" x2="1200" y2="210"/>
+    <line x1="0" y1="315" x2="1200" y2="315"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+    <line x1="0" y1="525" x2="1200" y2="525"/>
+    <line x1="200" y1="0" x2="200" y2="630"/>
+    <line x1="400" y1="0" x2="400" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="800" y1="0" x2="800" y2="630"/>
+    <line x1="1000" y1="0" x2="1000" y2="630"/>
+  </g>
+
+  <!-- Top gold accent bar -->
+  <rect x="80" y="80" width="60" height="4" rx="2" fill="#d4a853"/>
+
+  <!-- Q mark — large brand icon -->
+  <text
+    x="105"
+    y="240"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="128"
+    font-weight="700"
+    fill="#d4a853"
+    opacity="0.15"
+  >Q</text>
+
+  <!-- Main title -->
+  <text
+    x="80"
+    y="320"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="96"
+    font-weight="700"
+    fill="#f4f4f8"
+    letter-spacing="-2"
+  >Quest</text>
+
+  <!-- Tagline -->
+  <text
+    x="80"
+    y="390"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="32"
+    fill="#9494a8"
+    letter-spacing="0.5"
+  >The AI tutor that asks questions, not answers.</text>
+
+  <!-- Divider line -->
+  <rect x="80" y="430" width="480" height="1" fill="#2a2a36"/>
+
+  <!-- Feature pills -->
+  <g font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#9494a8">
+    <text x="80" y="472">Socratic method</text>
+    <text x="80" y="472" fill="#d4a853" dx="248">·</text>
+    <text x="80" y="472" dx="268">Spaced repetition</text>
+    <text x="80" y="472" fill="#d4a853" dx="538">·</text>
+    <text x="80" y="472" dx="558">Mastery tracking</text>
+  </g>
+
+  <!-- Right side — decorative score card -->
+  <g transform="translate(760, 140)">
+    <!-- Card bg -->
+    <rect width="360" height="340" rx="16" fill="#111118" stroke="#2a2a36" stroke-width="1.5"/>
+    <!-- Card header -->
+    <rect x="0" y="0" width="360" height="56" rx="16" fill="#18181f"/>
+    <rect x="0" y="40" width="360" height="16" fill="#18181f"/>
+    <text x="24" y="36" font-family="system-ui, sans-serif" font-size="18" fill="#9494a8">Session · React Hooks</text>
+    <!-- Score bars -->
+    <g transform="translate(24, 80)">
+      <text font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useState</text>
+      <rect x="0" y="24" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="24" width="250" height="6" rx="3" fill="#5fd68a"/>
+
+      <text y="60" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useEffect</text>
+      <rect x="0" y="84" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="84" width="180" height="6" rx="3" fill="#d4a853"/>
+
+      <text y="120" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useCallback</text>
+      <rect x="0" y="144" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="144" width="90" height="6" rx="3" fill="#f08080"/>
+    </g>
+    <!-- Tutor message bubble -->
+    <g transform="translate(24, 220)">
+      <rect width="312" height="80" rx="10" fill="#1f1f28"/>
+      <text x="16" y="28" font-family="system-ui, sans-serif" font-size="14" fill="#9494a8">Quest</text>
+      <text x="16" y="52" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">Why does useEffect run after</text>
+      <text x="16" y="70" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">every render by default?</text>
+    </g>
+  </g>
+
+  <!-- Bottom border accent -->
+  <rect x="0" y="626" width="1200" height="4" fill="#d4a853" opacity="0.4"/>
+</svg>
