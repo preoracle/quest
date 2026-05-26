@@ -1,0 +1,68 @@
+topic: go_with_grpc
+display_name: Go with gRPC
+concepts:
+- id: go_modules_and_toolchain
+  name: Go Modules & Toolchain
+  description: Covers how Go modules work (go.mod, go.sum), dependency management,
+    and the go CLI commands needed to scaffold and build a project.
+  prerequisites: []
+- id: protobuf_basics
+  name: Protocol Buffers Basics
+  description: 'Covers the .proto IDL syntax: message definitions, scalar and composite
+    field types, field numbers, and the role of protoc in code generation.'
+  prerequisites: []
+- id: grpc_concepts
+  name: gRPC Core Concepts
+  description: 'Covers what gRPC is, how it uses HTTP/2 and Protocol Buffers, and
+    the four service method types: unary, server-streaming, client-streaming, and
+    bidirectional-streaming.'
+  prerequisites:
+  - protobuf_basics
+- id: code_generation
+  name: Code Generation with protoc
+  description: Covers installing protoc-gen-go and protoc-gen-go-grpc plugins, running
+    protoc to emit Go stubs, and understanding the generated interface and registration
+    functions.
+  prerequisites:
+  - go_modules_and_toolchain
+  - grpc_concepts
+- id: grpc_server
+  name: Implementing a gRPC Server
+  description: Covers embedding the generated UnimplementedServer struct, writing
+    handler methods, creating a net.Listener, and registering and starting a grpc.Server.
+  prerequisites:
+  - code_generation
+- id: grpc_client
+  name: Implementing a gRPC Client
+  description: Covers creating a grpc.ClientConn with grpc.Dial, instantiating a generated
+    stub client, and making unary and streaming RPC calls from Go code.
+  prerequisites:
+  - code_generation
+- id: streaming_rpcs
+  name: Streaming RPCs in Go
+  description: Covers implementing and consuming server-streaming, client-streaming,
+    and bidirectional-streaming RPCs using the Send/Recv API and EOF handling in Go.
+  prerequisites:
+  - grpc_server
+  - grpc_client
+- id: interceptors_and_middleware
+  name: Interceptors & Middleware
+  description: Covers unary and stream interceptor signatures, chaining interceptors,
+    and common use cases such as logging, authentication, and recovery.
+  prerequisites:
+  - grpc_server
+  - grpc_client
+- id: metadata_and_error_handling
+  name: Metadata & Error Handling
+  description: Covers gRPC status codes, the status and codes packages, propagating
+    structured errors, and attaching/reading request metadata via the metadata package.
+  prerequisites:
+  - grpc_server
+  - grpc_client
+- id: tls_and_auth
+  name: TLS & Authentication
+  description: Covers configuring TLS credentials with grpc/credentials, using token-based
+    auth via PerRPCCredentials, and mutual TLS setup for secure channels.
+  prerequisites:
+  - interceptors_and_middleware
+  - metadata_and_error_handling
