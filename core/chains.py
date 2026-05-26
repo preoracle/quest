@@ -66,6 +66,7 @@ def build_socratic_chain(topic: str) -> Runnable:
         model=os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
         temperature=0.7,
         max_tokens=512,
+        max_retries=3,
     )
 
     return prompt | model
@@ -89,6 +90,7 @@ def build_evaluator_chain() -> Runnable:
         model=os.environ.get("ANTHROPIC_EVAL_MODEL", DEFAULT_EVAL_MODEL),
         temperature=0,
         max_tokens=512,
+        max_retries=3,
     ).with_structured_output(EvaluatorOutput)
 
     def _prepare(inputs: dict) -> dict:
@@ -132,5 +134,6 @@ def build_topic_generator_chain() -> Runnable:
         model=os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
         temperature=0.35,
         max_tokens=4096,
+        max_retries=3,
     ).with_structured_output(GeneratedTopicMap)
     return prompt | model

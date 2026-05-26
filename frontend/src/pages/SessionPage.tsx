@@ -3,28 +3,29 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   fetchSession,
   fetchSessionTurns,
+  fetchTopicGraph,
+  finishSession,
   startSession,
   submitTurn,
 } from "@/api/client";
-import type { SessionView } from "@/api/types";
+import type { GraphNode, SessionView } from "@/api/types";
+import { ActiveCycle } from "@/components/ActiveCycle";
 import { AnswerBar } from "@/components/AnswerBar";
 import { AppShell } from "@/components/AppShell";
 import { ContentTrack } from "@/components/ContentColumn";
-import { QuestionHero } from "@/components/QuestionHero";
 import { SessionCompletePanel } from "@/components/SessionCompletePanel";
-import { SessionScaffold } from "@/components/SessionScaffold";
-import { SessionSidebar } from "@/components/SessionSidebar";
+import { SessionPanel } from "@/components/SessionPanel";
+import { SessionWorkspace } from "@/components/SessionWorkspace";
 import { Skeleton } from "@/components/Skeleton";
-import { TurnHistory } from "@/components/TurnHistory";
 import { Button } from "@/components/ui/button";
-import { gutterPx, pagePy } from "@/lib/layout";
+import { gutterPx } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import {
-  appendTurnResult,
-  splitActiveQuestion,
-  turnsToTranscript,
-  type TranscriptEntry,
-} from "@/lib/transcript";
+  buildExchangesFromTurns,
+  firstSentence,
+  type CompletedCycle,
+  type CycleExchange,
+} from "@/lib/cycles";
 import { setActiveSession } from "@/lib/activeSession";
 
 export function SessionPage() {
@@ -32,15 +33,23 @@ export function SessionPage() {
   const navigate = useNavigate();
 
   const [session, setSession] = useState<SessionView | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [startingFresh, setStartingFresh] = useState(false);
   const [continuingStudy, setContinuingStudy] = useState(false);
+  const [wrappingUp, setWrappingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [turnSeed, setTurnSeed] = useState(0);
-  const [streak, setStreak] = useState(0);
+  const [submitCount, setSubmitCount] = useState(0);
+
+  // Cycle state
+  const [completedCycles, setCompletedCycles] = useState<CompletedCycle[]>([]);
+  const [activeConceptName, setActiveConceptName] = useState<string | null>(null);
+  const [activeExchanges, setActiveExchanges] = useState<CycleExchange[]>([]);
+  const [expandedCycleIds, setExpandedCycleIds] = useState<Set<string>>(new Set());
+
+  // Right panel
+  const [topicNodes, setTopicNodes] = useState<GraphNode[]>([]);
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -60,21 +69,25 @@ export function SessionPage() {
       } else {
         setActiveSession(null);
       }
-      let entries = turnsToTranscript(turns);
-      if (
-        view.waiting_for_answer &&
-        view.tutor_message &&
-        (entries.length === 0 ||
-          entries[entries.length - 1]?.kind !== "tutor" ||
-          (entries[entries.length - 1] as { text: string }).text !==
-            view.tutor_message)
-      ) {
-        entries = [
-          ...entries.filter((e) => e.id !== "t-pending"),
-          { id: "t-pending", kind: "tutor", text: view.tutor_message },
-        ];
+
+      // If there are prior turns (resumed session), bundle them as one chip
+      if (turns.length > 0) {
+        const exchanges = buildExchangesFromTurns(turns);
+        const lastEval = [...exchanges].reverse().find((e) => e.eval != null)?.eval;
+        const priorCycle: CompletedCycle = {
+          id: "prior-session",
+          conceptName: view.topic_display ?? "Prior session",
+          exchanges,
+          finalScore: lastEval?.score ?? 3,
+          summary: lastEval ? firstSentence(lastEval.reasoning) : `${exchanges.length} exchanges`,
+        };
+        setCompletedCycles([priorCycle]);
+      } else {
+        setCompletedCycles([]);
       }
-      setTranscript(entries);
+
+      setActiveExchanges([]);
+      setActiveConceptName(view.focus ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Session not found");
     } finally {
@@ -90,36 +103,69 @@ export function SessionPage() {
     void load();
   }, [sessionId, load, navigate]);
 
+  useEffect(() => {
+    if (!session?.topic_id) return;
+    fetchTopicGraph(session.topic_id)
+      .then((g) => setTopicNodes(g.nodes))
+      .catch(() => {});
+  }, [session?.topic_id]);
+
   async function onSubmit() {
     if (!sessionId || !answer.trim() || submitting || !session?.waiting_for_answer) {
       return;
     }
     const text = answer.trim();
+    const prevFocus = session.focus;
+    const currentQuestion = session.tutor_message ?? "";
+
     setSubmitting(true);
     setError(null);
     try {
       const next = await submitTurn(sessionId, text);
-      const seed = turnSeed + 1;
-      setTurnSeed(seed);
-      setTranscript((prev) =>
-        appendTurnResult(
-          prev.filter((x) => x.id !== "t-pending"),
-          text,
-          next.last_evaluation,
-          next.waiting_for_answer ? next.tutor_message : null,
-          seed,
-        ),
-      );
+
+      const newExchange: CycleExchange = {
+        id: `e-${Date.now()}`,
+        question: currentQuestion,
+        answer: text,
+        eval: next.last_evaluation
+          ? {
+              score: next.last_evaluation.score,
+              gaps: next.last_evaluation.gaps,
+              reasoning: next.last_evaluation.reasoning,
+            }
+          : null,
+      };
+
+      const focusChanged = next.focus != null && next.focus !== prevFocus;
+
+      if (focusChanged) {
+        // Compress the active concept cycle into a chip
+        const allExchanges = [...activeExchanges, newExchange];
+        const lastEval = newExchange.eval;
+        const completed: CompletedCycle = {
+          id: `cycle-${prevFocus ?? Date.now()}`,
+          conceptName: prevFocus ?? activeConceptName ?? "Concept",
+          exchanges: allExchanges,
+          finalScore: lastEval?.score ?? 3,
+          summary: lastEval ? firstSentence(lastEval.reasoning) : "",
+        };
+        setCompletedCycles((prev) => [...prev, completed]);
+        setActiveExchanges([]);
+        setActiveConceptName(next.focus);
+      } else {
+        // Continue accumulating in the active concept cycle
+        setActiveExchanges((prev) => [...prev, newExchange]);
+        if (!activeConceptName && next.focus) {
+          setActiveConceptName(next.focus);
+        }
+      }
+
       setSession(next);
       setAnswer("");
-      if (next.last_evaluation) {
-        const s = next.last_evaluation.score;
-        setStreak((prev) => (s >= 3 ? prev + 1 : 0));
-      }
+      setSubmitCount((n) => n + 1);
+
       if (next.done) {
         setActiveSession(null);
-        const turns = await fetchSessionTurns(sessionId);
-        setTranscript(turnsToTranscript(turns));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit");
@@ -154,16 +200,50 @@ export function SessionPage() {
     }
   }
 
+  async function wrapUp() {
+    if (!sessionId || wrappingUp) return;
+    setWrappingUp(true);
+    setError(null);
+    try {
+      const finished = await finishSession(sessionId);
+      setSession(finished);
+      setActiveSession(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not wrap up");
+      setWrappingUp(false);
+    }
+  }
+
+  function toggleCycle(id: string) {
+    setExpandedCycleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   if (!sessionId) return null;
 
-  const activeQuestion =
-    session && !session.done && session.waiting_for_answer
-      ? session.tutor_message
-      : null;
-  const { history } = splitActiveQuestion(transcript, activeQuestion);
-  const masteryScore = session?.last_evaluation?.score;
   const isActive = !!session && !session.done && session.waiting_for_answer;
-  const turnsAnswered = transcript.filter((e) => e.kind === "eval").length;
+
+  const scoreHistory = [
+    ...completedCycles.flatMap((c) => c.exchanges),
+    ...activeExchanges,
+  ]
+    .filter((e) => e.eval != null)
+    .map((e) => e.eval!.score);
+
+  const visitedConceptNames = new Set(completedCycles.map((c) => c.conceptName));
+
+  const keyGaps = Array.from(
+    new Set(
+      completedCycles
+        .flatMap((c) => c.exchanges)
+        .filter((e) => e.eval && e.eval.score <= 3 && e.eval.gaps.length > 0)
+        .flatMap((e) => e.eval!.gaps),
+    ),
+  ).slice(0, 3);
 
   return (
     <AppShell
@@ -174,10 +254,9 @@ export function SessionPage() {
       }
       inSession={!!session && !session.done}
       exitTo={session?.topic_id ? `/topics/${session.topic_id}` : "/topics"}
-      masteryScore={masteryScore}
     >
       {loading && (
-        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", gutterPx, pagePy)}>
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", gutterPx, "py-page")}>
           <ContentTrack tier="reading" className="flex flex-col gap-section">
             <Skeleton className="h-24 w-full rounded-2xl" />
             <Skeleton className="h-16 w-full rounded-xl" />
@@ -186,7 +265,7 @@ export function SessionPage() {
       )}
 
       {error && !session && !loading && (
-        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, pagePy)}>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, "py-page")}>
           <ContentTrack tier="reading">
             <p className="text-score-low">{error}</p>
             <Link to="/topics" className="mt-4 inline-block text-accent">
@@ -197,7 +276,7 @@ export function SessionPage() {
       )}
 
       {session && !loading && session.done && (
-        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, pagePy)}>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", gutterPx, "py-page")}>
           <ContentTrack tier="reading">
             <SessionCompletePanel
               session={session}
@@ -211,39 +290,32 @@ export function SessionPage() {
       )}
 
       {session && !loading && !session.done && (
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-        <SessionScaffold
-          turnsAnswered={turnsAnswered}
-          scrollTrigger={turnSeed}
-          streak={streak}
+        <SessionWorkspace
           className="min-w-0 flex-1"
-          pinnedQuestion={
-            activeQuestion ? (
-              <QuestionHero question={activeQuestion} focus={session.focus} />
-            ) : (
-              <div className="rounded-2xl border border-line/50 bg-surface/30 px-5 py-4 text-sm">
-                <p className="font-medium text-on-surface">Session paused</p>
-                <p className="mt-2 text-on-muted">
-                  Start a new session to get a fresh question.
-                </p>
-                <Button
-                  className="mt-4"
-                  size="sm"
-                  disabled={submitting}
-                  onClick={() => void startFreshRun()}
-                >
-                  New session
-                </Button>
-              </div>
-            )
+          cycles={completedCycles}
+          expandedCycleIds={expandedCycleIds}
+          onToggleCycle={toggleCycle}
+          scrollTrigger={submitCount}
+          panel={
+            <SessionPanel
+              scores={scoreHistory}
+              nodes={topicNodes}
+              visitedNames={visitedConceptNames}
+              activeName={activeConceptName}
+              keyGaps={keyGaps}
+              onWrapUp={() => void wrapUp()}
+              wrappingUp={wrappingUp}
+            />
           }
-          scroll={
-            <>
-              <TurnHistory entries={history} />
-              {error && (
-                <p className="mt-3 text-xs text-score-low">{error}</p>
-              )}
-            </>
+          activeContent={
+            <ActiveCycle
+              conceptName={activeConceptName}
+              exchanges={activeExchanges}
+              currentQuestion={
+                session.waiting_for_answer ? session.tutor_message : null
+              }
+              error={error}
+            />
           }
           pinnedBottom={
             isActive ? (
@@ -253,11 +325,28 @@ export function SessionPage() {
                 onSubmit={() => void onSubmit()}
                 submitting={submitting}
               />
-            ) : undefined
+            ) : (
+              <div className={cn(gutterPx, "py-4")}>
+                <ContentTrack tier="reading">
+                  <div className="rounded-2xl border border-line/50 bg-surface/30 px-5 py-4 text-sm">
+                    <p className="font-medium text-on-surface">Session paused</p>
+                    <p className="mt-2 text-on-muted">
+                      Start a new session to get a fresh question.
+                    </p>
+                    <Button
+                      className="mt-4"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => void startFreshRun()}
+                    >
+                      New session
+                    </Button>
+                  </div>
+                </ContentTrack>
+              </div>
+            )
           }
         />
-        <SessionSidebar session={session} transcript={transcript} />
-        </div>
       )}
     </AppShell>
   );

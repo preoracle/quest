@@ -329,6 +329,16 @@ def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
+@router.post("/sessions/{session_id}/finish", response_model=SessionView)
+def finish_session_route(session_id: str) -> SessionView:
+    """End a session early and generate its report."""
+    try:
+        with queries.get_connection() as conn:
+            return session_api.finish_session(conn, session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/sessions/{session_id}/turns", response_model=list[TurnItem])
 def list_session_turns(session_id: str) -> list[TurnItem]:
     """Return ordered turns for rebuilding the session transcript in the UI."""

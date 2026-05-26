@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -10,6 +11,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
 from db import queries
+
+_DEV_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5174",
+    "http://localhost:5174",
+]
+
+
+def _cors_origins() -> list[str]:
+    """CORS_ORIGINS env var (comma-separated) or dev localhost defaults."""
+    raw = os.environ.get("CORS_ORIGINS", "")
+    if raw.strip():
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    return _DEV_ORIGINS
 
 
 @asynccontextmanager
@@ -28,12 +44,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-        "http://127.0.0.1:5174",
-        "http://localhost:5174",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

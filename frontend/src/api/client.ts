@@ -157,6 +157,10 @@ export function fetchSessionTurns(sessionId: string): Promise<TurnItem[]> {
   return request<TurnItem[]>(`/sessions/${sessionId}/turns`);
 }
 
+export function finishSession(sessionId: string): Promise<SessionView> {
+  return request<SessionView>(`/sessions/${sessionId}/finish`, { method: "POST" });
+}
+
 export function fetchMastery(topic?: string): Promise<MasteryResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
   return request<MasteryResponse>(`/users/${_userId}/mastery${q}`);

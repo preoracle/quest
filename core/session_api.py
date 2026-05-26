@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from core.graph import build_checkpointer, build_quest_graph, seed_state_from_turns
 from core.models import EvaluatorOutput
-from core.session_report import SessionReport, report_from_json
+from core.session_report import SessionReport, build_session_report, report_from_json
 from core.topics import load_topic
 from db import queries
 
@@ -96,6 +96,36 @@ def _values_to_view(
         summary=summary,
         report=report,
         ended_at=session_row.get("ended_at"),
+    )
+
+
+def finish_session(conn: sqlite3.Connection, session_id: str) -> SessionView:
+    """Mark a session as done, build its report, and return the updated view.
+
+    Returns directly from DB — does not call get_session_view so that
+    LangGraph graph state (which still has done=False) is never consulted.
+    """
+    row = queries.get_session(conn, session_id)
+    if row is None:
+        raise ValueError(f"Unknown session: {session_id}")
+    if not row.get("ended_at"):
+        queries.end_session(conn, session_id)
+    try:
+        topic_data = load_topic(row["topic"])
+        display = topic_data.get("display_name") or row["topic"]
+    except FileNotFoundError:
+        display = row["topic"]
+    report = build_session_report(conn, session_id, row["topic"], display)
+    queries.set_session_report(conn, session_id, report.model_dump_json())
+    row = queries.get_session(conn, session_id)
+    return SessionView(
+        session_id=session_id,
+        user_id=row["user_id"],
+        topic_id=row["topic"],
+        topic_display=display,
+        done=True,
+        report=report,
+        ended_at=row.get("ended_at"),
     )
 
 
