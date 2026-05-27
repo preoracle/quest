@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -103,6 +104,7 @@ export function AuthModal({
         {trigger}
       </Button>
 
+      {createPortal(
       <AnimatePresence>
         {open && (
           <motion.div
@@ -266,7 +268,9 @@ export function AuthModal({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </>
   );
 }
