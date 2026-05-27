@@ -20,12 +20,23 @@ _DEV_ORIGINS = [
 ]
 
 
+def _normalize_origin(origin: str) -> str:
+    """Strip whitespace and trailing slash — browsers never send a trailing slash."""
+    return origin.strip().rstrip("/")
+
+
 def _cors_origins() -> list[str]:
     """CORS_ORIGINS env var (comma-separated) or dev localhost defaults."""
     raw = os.environ.get("CORS_ORIGINS", "")
     if raw.strip():
-        return [o.strip() for o in raw.split(",") if o.strip()]
+        return [_normalize_origin(o) for o in raw.split(",") if o.strip()]
     return _DEV_ORIGINS
+
+
+def _cors_origin_regex() -> str | None:
+    """Optional regex for extra origins (e.g. Vercel preview deployments)."""
+    raw = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
+    return raw or None
 
 
 @asynccontextmanager
@@ -45,6 +56,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
+    allow_origin_regex=_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -12,8 +12,9 @@ services:
       ANTHROPIC_API_KEY:   ${ANTHROPIC_API_KEY}
       # Auth — Supabase JWT verification
       SUPABASE_URL:        ${SUPABASE_URL}
-      # Comma-separated list of allowed CORS origins
-      CORS_ORIGINS:        "http://localhost:3000,http://127.0.0.1:3000"
+      # Comma-separated list of allowed CORS origins (from .env in prod-like tests)
+      CORS_ORIGINS:        ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGIN_REGEX:   ${CORS_ORIGIN_REGEX:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

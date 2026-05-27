@@ -79,7 +79,8 @@ Option B — **Render buildpack** (no Docker):
 | `ANTHROPIC_API_KEY` | Your Anthropic key |
 | `DATABASE_URL` | Supabase transaction pooler URL (port 6543) |
 | `SUPABASE_URL` | `https://YOURREF.supabase.co` |
-| `CORS_ORIGINS` | `https://your-frontend.vercel.app` |
+| `CORS_ORIGINS` | `https://questt-ai.vercel.app` (no trailing slash) |
+| `CORS_ORIGIN_REGEX` | `https://quest-.*\.vercel\.app` (optional; Vercel previews) |
 
 ### 3. Frontend (Vercel — recommended)
 
@@ -91,7 +92,7 @@ Vercel auto-deploys from GitHub. Set root directory to `frontend`.
 |----------|-------|
 | `VITE_SUPABASE_URL` | `https://YOURREF.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Your Supabase anon key |
-| `VITE_API_URL` | `https://your-api.onrender.com` |
+| `VITE_API_URL` | `https://quest-n1sv.onrender.com` |
 
 Build command: `npm run build` — Output dir: `dist`
 
@@ -112,7 +113,8 @@ Set `CORS_ORIGINS=https://your-app.vercel.app` on the backend. Comma-separate mu
 | `ANTHROPIC_EVAL_MODEL` | no | `claude-haiku-4-5` | Evaluator model (cheap scoring) |
 | `DATABASE_URL` | prod | — | Supabase transaction pooler URL (port 6543) |
 | `SUPABASE_URL` | prod | — | `https://YOURREF.supabase.co` — for JWT verification |
-| `CORS_ORIGINS` | prod | localhost:5173/5174 | Comma-separated allowed origins |
+| `CORS_ORIGINS` | prod | localhost:5173/5174 | Comma-separated allowed origins (no trailing `/`) |
+| `CORS_ORIGIN_REGEX` | no | — | Regex for extra origins (e.g. Vercel preview URLs) |
 | `QUEST_DATA_DIR` | no | repo-relative | Override path for DB + checkpoints |
 
 ### Frontend (build-time — baked into JS bundle)
