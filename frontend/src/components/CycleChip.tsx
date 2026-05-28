@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/MessageContent";
-import { masteryWord, type CompletedCycle } from "@/lib/cycles";
+import { masteryWord, scoreColor, scoreIcon, type CompletedCycle } from "@/lib/cycles";
 
 function ExchangeBlock({ exchange }: { exchange: CompletedCycle["exchanges"][number] }) {
   return (
@@ -19,13 +19,17 @@ function ExchangeBlock({ exchange }: { exchange: CompletedCycle["exchanges"][num
       )}
       {exchange.eval && (
         <div className="mt-2 pl-3">
-          <p className="text-[12px] leading-[1.6] text-on-muted/65">
-            → {exchange.eval.reasoning}
+          <p className="text-[12px] leading-[1.6] text-on-muted/70">
+            {exchange.eval.reasoning}
           </p>
-          {exchange.eval.score <= 2 && exchange.eval.gaps[0] && (
-            <p className="mt-1 text-[11px] text-score-low/60">
-              {exchange.eval.gaps[0]}
-            </p>
+          {exchange.eval.score <= 3 && exchange.eval.gaps.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {exchange.eval.gaps.map((gap, i) => (
+                <li key={i} className="text-[11px] text-score-low/65">
+                  ↳ {gap}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -55,14 +59,16 @@ export function CycleChip({
         onClick={onToggle}
         className="flex w-full cursor-pointer items-start gap-2 px-3 py-2.5 text-left"
       >
-        <span className="mt-px shrink-0 text-[11px] text-score-good/60">✓</span>
+        <span className={cn("mt-px shrink-0 text-[11px]", scoreColor(cycle.finalScore), "opacity-70")}>
+          {scoreIcon(cycle.finalScore)}
+        </span>
 
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-medium text-on-surface">
               {cycle.conceptName}
             </span>
-            <span className="text-xs text-on-muted/50">
+            <span className={cn("text-xs opacity-60", scoreColor(cycle.finalScore))}>
               {masteryWord(cycle.finalScore)}
             </span>
           </div>

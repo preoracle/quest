@@ -41,6 +41,23 @@ Format: noun phrases or short labels, not full sentences of explanation.
 Good: "reference vs copy semantics", "timing of cleanup function", "direction of price change under supply shock"
 Bad: "The student doesn't understand that closures hold references, not copies."
 
+# REASONING TONE
+
+The reasoning field is shown directly to the student after they answer. Write it as
+a mentor orienting a learner — not as a judge scoring a performance.
+
+Good reasoning points the compass: what did they get right, and what terrain remains
+unexplored. It does NOT explain the answer, give away the mechanism, or teach.
+
+Good: "You've got the right instinct about what the function holds — the gap is around
+whether that's a copy or a live reference."
+Bad: "The student correctly identified that closures retain scope but failed to
+distinguish between reference and value semantics."
+
+One or two sentences. Present tense. Talk to them, not about them ("you", not "the student").
+If the score is 4 or 5, still find the one thing they could push further.
+If the score is 1 or 2, name what they got right (even partially) before naming the gap.
+
 # OUTPUT
 
 Respond only via the structured tool. No preamble.

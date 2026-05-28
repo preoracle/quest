@@ -24,13 +24,17 @@ function Exchange({ exchange }: { exchange: CycleExchange }) {
       {/* Evaluation */}
       {exchange.eval && (
         <div className="mt-3 pl-4">
-          <p className="text-[13px] leading-[1.65] text-on-muted/75">
-            → {exchange.eval.reasoning}
+          <p className="text-[13px] leading-[1.65] text-on-muted/80">
+            {exchange.eval.reasoning}
           </p>
-          {exchange.eval.score <= 2 && exchange.eval.gaps[0] && (
-            <p className="mt-1.5 text-[12px] text-score-low/65">
-              {exchange.eval.gaps[0]}
-            </p>
+          {exchange.eval.score <= 3 && exchange.eval.gaps.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {exchange.eval.gaps.map((gap, i) => (
+                <li key={i} className="text-[12px] text-score-low/65">
+                  ↳ {gap}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

@@ -47,18 +47,18 @@ export function SessionCompletePanel({
   const stats = [
     {
       value: String(evaluated),
-      label: "Questions answered",
+      label: "Questions explored",
       color: "text-on-surface",
     },
     {
       value: String(strongAnswers),
-      label: "Strong answers (4+)",
+      label: "Concepts you nailed",
       color: "text-score-good",
     },
     {
-      value: avgScore !== null ? avgScore.toFixed(1) : "–",
-      label: "Avg score / 5",
-      color: "text-accent",
+      value: avgScore !== null && avgScore >= 3 ? "On track" : avgScore !== null ? "Keep going" : "–",
+      label: "Overall momentum",
+      color: avgScore !== null && avgScore >= 3 ? "text-score-good" : "text-accent",
       suffix: avgScore !== null ? <TrendingUp className="size-3.5 opacity-60" /> : null,
     },
   ];

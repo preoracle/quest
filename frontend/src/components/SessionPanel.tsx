@@ -119,7 +119,7 @@ function KeyGaps({ gaps }: { gaps: string[] }) {
   return (
     <div>
       <div className="mb-2.5">
-        <SectionLabel>Gaps so far</SectionLabel>
+        <SectionLabel>Worth revisiting</SectionLabel>
       </div>
       <ul className="space-y-2">
         {gaps.map((g, i) => (
@@ -169,7 +169,7 @@ export function SessionPanel({
         {/* Mastery chart */}
         <div>
           <div className="mb-3">
-            <SectionLabel>Mastery</SectionLabel>
+            <SectionLabel>Understanding</SectionLabel>
           </div>
           <MasteryChart scores={scores} />
         </div>
