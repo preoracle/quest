@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at TIMESTAMP,
   summary_text TEXT,
   report_json TEXT,
-  session_kind TEXT NOT NULL DEFAULT 'study' CHECK (session_kind IN ('study', 'baseline'))
+  session_kind TEXT NOT NULL DEFAULT 'study' CHECK (session_kind IN ('study', 'baseline', 'replay'))
 );
 
 CREATE TABLE IF NOT EXISTS turns (
@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS turns (
   evaluator_score INTEGER,
   evaluator_gaps_json TEXT,
   evaluator_reasoning TEXT,
+  evaluator_gap_type TEXT,
+  evaluator_expert_framing TEXT,
   evaluator_concept_id TEXT,
   evaluator_concept_confidence REAL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

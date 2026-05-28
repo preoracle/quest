@@ -62,16 +62,19 @@ def topological_concept_ids(
     return ordered
 
 
-def is_due(next_review_at: str | None, now: datetime | None = None) -> bool:
+def is_due(next_review_at: str | datetime | None, now: datetime | None = None) -> bool:
     """True if never scheduled or review date is in the past."""
     if not next_review_at:
         return True
     now = now or datetime.now(timezone.utc)
     try:
-        due = datetime.fromisoformat(next_review_at.replace("Z", "+00:00"))
+        if isinstance(next_review_at, datetime):
+            due = next_review_at
+        else:
+            due = datetime.fromisoformat(next_review_at.replace("Z", "+00:00"))
         if due.tzinfo is None:
             due = due.replace(tzinfo=timezone.utc)
-    except ValueError:
+    except (TypeError, ValueError):
         return True
     return due <= now
 

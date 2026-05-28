@@ -219,7 +219,7 @@ export function SessionSidebar({
   const hasAnyEval = transcript.some((e) => e.kind === "eval");
 
   return (
-    <aside className="hidden xl:flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line/15 px-6 py-7 sidebar-bg backdrop-blur-2xl">
+    <aside className="hidden xl:flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line/15 px-6 py-7 sidebar-bg">
       {loading && !graph ? (
         <SidebarSkeleton />
       ) : (

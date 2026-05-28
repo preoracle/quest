@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
+@keyframes quest-rail {
+  0% { transform: translateX(-80%); opacity: 0.6; }
+  35% { opacity: 1; }
+  100% { transform: translateX(180%); opacity: 0.75; }
+}
+
 @theme {
-  --color-void: #060608;
-  --color-canvas: #0a0a0f;
-  --color-surface: #111118;
-  --color-surface-elevated: #18181f;
-  --color-surface-muted: #1f1f28;
-  --color-on-surface: #f4f4f8;
-  --color-on-muted: #9494a8;
-  --color-line: #2a2a36;
-  --color-line-soft: #1e1e28;
-  --color-accent: #d4a853;
-  --color-accent-dim: #d4a8531a;
-  --color-accent-glow: #e8c47a;
+  /* Warm charcoal — "private study room": same darkness, amber undertones */
+  --color-void: #0a0906;
+  --color-canvas: #0f0e0b;
+  --color-surface: #161510;
+  --color-surface-elevated: #1d1c17;
+  --color-surface-muted: #252319;
+  --color-on-surface: #f5f2ea;
+  --color-on-muted: #9e9a8c;
+  --color-line: #2e2b22;
+  --color-line-soft: #201e18;
+  /* Amber-gold: warmer, richer than the old yellow-gold */
+  --color-accent: #d4a24a;
+  --color-accent-dim: #d4a24a1a;
+  --color-accent-glow: #e8b86a;
   --color-score-good: #5fd68a;
-  --color-score-mid: #d4a853;
+  --color-score-mid: #d4a24a;
   --color-score-low: #f08080;
 
   --font-display: "Fraunces", Georgia, serif;
@@ -150,51 +158,87 @@
   .glass-panel {
     background: linear-gradient(
       135deg,
-      rgb(24 24 36 / 0.7) 0%,
-      rgb(16 16 26 / 0.6) 100%
+      rgb(29 28 23 / 0.75) 0%,
+      rgb(22 21 16 / 0.65) 100%
     );
-    backdrop-filter: blur(24px) saturate(1.5);
-    -webkit-backdrop-filter: blur(24px) saturate(1.5);
-    border: 1px solid rgb(42 42 60 / 0.5);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid rgb(46 43 34 / 0.55);
     box-shadow:
       0 8px 32px rgb(0 0 0 / 0.4),
-      0 1px 0 rgb(255 255 255 / 0.05) inset;
+      0 1px 0 rgb(255 248 230 / 0.04) inset;
   }
 
   .header-glass {
     background: linear-gradient(
       to bottom,
-      rgb(16 16 24 / 0.82) 0%,
-      rgb(10 10 18 / 0.72) 100%
+      rgb(22 21 16 / 0.88) 0%,
+      rgb(15 14 11 / 0.78) 100%
     );
-    backdrop-filter: blur(48px) saturate(1.8) brightness(1.04);
-    -webkit-backdrop-filter: blur(48px) saturate(1.8) brightness(1.04);
+    backdrop-filter: blur(48px) saturate(1.6) brightness(1.04);
+    -webkit-backdrop-filter: blur(48px) saturate(1.6) brightness(1.04);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.05),
-      0 1px 0 rgb(42 42 60 / 0.5) inset,
+      0 1px 0 rgb(255 248 230 / 0.05),
+      0 1px 0 rgb(46 43 34 / 0.5) inset,
       0 16px 48px rgb(0 0 0 / 0.25),
-      0 0 0 1px rgb(212 168 83 / 0.04) inset;
+      0 0 0 1px rgb(212 162 74 / 0.05) inset;
   }
 
   .app-header-floating {
-    border: 1px solid rgb(212 168 83 / 0.18);
+    border: 1px solid rgb(212 162 74 / 0.18);
     border-radius: 1rem;
     background:
       linear-gradient(
         135deg,
-        rgb(212 168 83 / 0.12) 0%,
-        rgb(140 160 255 / 0.05) 45%,
-        rgb(17 17 24 / 0.75) 100%
+        rgb(212 162 74 / 0.12) 0%,
+        rgb(180 140 60 / 0.05) 45%,
+        rgb(22 21 16 / 0.78) 100%
       );
     backdrop-filter: blur(20px) saturate(1.2);
     box-shadow:
       0 4px 24px rgb(0 0 0 / 0.35),
-      0 1px 0 rgb(212 168 83 / 0.15) inset,
-      0 0 40px rgb(212 168 83 / 0.04);
+      0 1px 0 rgb(212 162 74 / 0.15) inset,
+      0 0 40px rgb(212 162 74 / 0.04);
   }
 
+  /* Legacy .question-card — kept for other uses */
   .question-card {
     @apply rounded-2xl border border-line/50 bg-surface/35 px-5 py-5 backdrop-blur-sm;
+  }
+
+  /* Hero question block — Socratic prompt displayed like an exam question */
+  .question-hero {
+    border-left: 2px solid rgb(212 162 74 / 0.45);
+    padding-left: 1.25rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  /* Evaluation result card — structured feedback after each answer */
+  .eval-card {
+    @apply rounded-xl border border-line/40 bg-surface-elevated/60 overflow-hidden;
+  }
+
+  /* Ruled-line writing surface (exam booklet feel) */
+  .writing-surface {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent calc(1.85em - 1px),
+      rgb(46 43 34 / 0.25) calc(1.85em - 1px),
+      rgb(46 43 34 / 0.25) 1.85em
+    );
+    background-attachment: local;
+  }
+
+  [data-theme="light"] .writing-surface {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent calc(1.85em - 1px),
+      rgb(200 195 182 / 0.5) calc(1.85em - 1px),
+      rgb(200 195 182 / 0.5) 1.85em
+    );
   }
 
   .skeleton {
@@ -243,7 +287,7 @@
 
   /* ── Sidebar background (replaces inline style so light mode can override) */
   .sidebar-bg {
-    background: linear-gradient(to right, rgb(10 10 16 / 0.85), rgb(8 8 14 / 0.78));
+    background: linear-gradient(to right, rgb(14 13 10 / 0.9), rgb(10 9 7 / 0.82));
   }
 
   /* ── Light-mode overrides for utilities with hardcoded RGB values ──── */

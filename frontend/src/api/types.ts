@@ -31,6 +31,8 @@ export interface Evaluation {
   score: number;
   gaps: string[];
   reasoning: string;
+  gap_type?: string | null;
+  expert_framing?: string | null;
   inferred_concept_id: string | null;
   inferred_concept_confidence: number;
 }
@@ -82,6 +84,8 @@ export interface TurnItem {
   evaluator_score: number | null;
   evaluator_gaps: string[];
   evaluator_reasoning: string | null;
+  evaluator_gap_type?: string | null;
+  evaluator_expert_framing?: string | null;
 }
 
 export interface MasteryItem {

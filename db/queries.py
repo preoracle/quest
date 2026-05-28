@@ -36,9 +36,18 @@ def get_connection(db_path: Path | str | None = None):
 
 
 def _migrate_schema(conn) -> None:
-    """Apply additive schema changes for existing SQLite databases."""
-    if conn.db_type != "sqlite":
-        return  # Postgres: always created fresh from the full schema
+    """Apply additive schema changes for existing databases."""
+    if conn.db_type == "postgres":
+        conn.execute("ALTER TABLE turns ADD COLUMN IF NOT EXISTS evaluator_gap_type TEXT")
+        conn.execute("ALTER TABLE turns ADD COLUMN IF NOT EXISTS evaluator_expert_framing TEXT")
+        conn.execute("ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_session_kind_check")
+        conn.execute(
+            "ALTER TABLE sessions ADD CONSTRAINT sessions_session_kind_check "
+            "CHECK (session_kind IN ('study', 'baseline', 'replay'))"
+        )
+        conn.commit()
+        return
+
     cols = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
@@ -55,6 +64,14 @@ def _migrate_schema(conn) -> None:
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
     }
+    turn_cols = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(turns)").fetchall()
+    }
+    if "evaluator_gap_type" not in turn_cols:
+        conn.execute("ALTER TABLE turns ADD COLUMN evaluator_gap_type TEXT")
+    if "evaluator_expert_framing" not in turn_cols:
+        conn.execute("ALTER TABLE turns ADD COLUMN evaluator_expert_framing TEXT")
     if "topic_metadata" not in tables:
         conn.execute(
             """
@@ -120,6 +137,7 @@ def init_db(db_path: Path | str | None = None) -> Path | None:
         schema = _PG_SCHEMA_PATH.read_text(encoding="utf-8")
         with get_connection() as conn:
             conn.executescript(schema)
+            _migrate_schema(conn)
         return None
     from core.paths import db_path as _default_db_path  # noqa: PLC0415
     path = Path(db_path) if db_path else _default_db_path()
@@ -302,6 +320,8 @@ def record_turn(
     evaluator_score: int | None = None,
     evaluator_gaps: list[str] | None = None,
     evaluator_reasoning: str | None = None,
+    evaluator_gap_type: str | None = None,
+    evaluator_expert_framing: str | None = None,
     evaluator_concept_id: str | None = None,
     evaluator_concept_confidence: float | None = None,
 ) -> int:
@@ -310,14 +330,16 @@ def record_turn(
     params = (
         session_id, turn_idx, role, content,
         evaluator_score, gaps_json, evaluator_reasoning,
+        evaluator_gap_type, evaluator_expert_framing,
         evaluator_concept_id, evaluator_concept_confidence, _utc_now(),
     )
     insert_sql = """
         INSERT INTO turns (
             session_id, turn_idx, role, content,
             evaluator_score, evaluator_gaps_json, evaluator_reasoning,
+            evaluator_gap_type, evaluator_expert_framing,
             evaluator_concept_id, evaluator_concept_confidence, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     if conn.db_type == "postgres":
         cursor = conn.execute(insert_sql + " RETURNING id", params)
@@ -550,7 +572,8 @@ def get_session_turns_detailed(
     rows = conn.execute(
         """
         SELECT turn_idx, role, content, evaluator_score, evaluator_gaps_json,
-               evaluator_concept_id, evaluator_reasoning
+               evaluator_concept_id, evaluator_reasoning,
+               evaluator_gap_type, evaluator_expert_framing
         FROM turns
         WHERE session_id = ?
         ORDER BY turn_idx
@@ -663,7 +686,8 @@ def get_due_concepts(
 
     out: list[DueConceptRow] = []
     for r in rows:
-        nra = r["next_review_at"]
+        nra_raw = r["next_review_at"]
+        nra = nra_raw.isoformat() if isinstance(nra_raw, datetime) else nra_raw
         if not is_due(nra, now):
             continue
         overdue = bool(nra)

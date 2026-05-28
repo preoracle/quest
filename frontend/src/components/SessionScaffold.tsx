@@ -88,7 +88,7 @@ export function SessionScaffold({
 
       {/* Bottom zone: question prompt above, answer composer below */}
       {(pinnedQuestion || pinnedBottom) && (
-        <div className="shrink-0 border-t border-line/40 bg-void/90 backdrop-blur-xl">
+        <div className="shrink-0 border-t border-line/40 bg-void/95">
           {pinnedQuestion && (
             <div className={cn("border-b border-line/20 pb-3.5 pt-3.5", gutterPx)}>
               <ContentTrack tier="reading">{pinnedQuestion}</ContentTrack>

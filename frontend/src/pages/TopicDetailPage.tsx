@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Gauge, Play, RotateCcw, TrendingUp } from "lucide-react";
+import { Play, RotateCcw } from "lucide-react";
 import { fetchTopics, startSession } from "@/api/client";
 import type { StartMode, TopicCatalogItem } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
+import { PageLoader } from "@/components/PageLoader";
 import { PageScaffold } from "@/components/PageScaffold";
 import { TopicManageActions } from "@/components/TopicManageActions";
 import { Badge } from "@/components/ui/badge";
@@ -60,9 +61,12 @@ export function TopicDetailPage() {
 
   if (loading) {
     return (
-      <AppShell breadcrumb={[{ label: "Topics", to: "/topics" }]}>
+      <AppShell breadcrumb={[{ label: "Library", to: "/topics" }]}>
         <PageScaffold tier="reading">
-          <p className="text-sm text-on-muted">Loading…</p>
+          <PageLoader
+            label="Loading thread"
+            hint="Pulling your concepts, scores, and queue status."
+          />
         </PageScaffold>
       </AppShell>
     );
@@ -70,11 +74,11 @@ export function TopicDetailPage() {
 
   if (!topic) {
     return (
-      <AppShell breadcrumb={[{ label: "Topics", to: "/topics" }]}>
+      <AppShell breadcrumb={[{ label: "Library", to: "/topics" }]}>
         <PageScaffold tier="reading">
           <p className="text-sm text-score-low">{error ?? "Topic not found"}</p>
           <Link to="/topics" className="mt-4 inline-block text-sm text-accent">
-            ← Topics
+            ← Library
           </Link>
         </PageScaffold>
       </AppShell>
@@ -89,14 +93,14 @@ export function TopicDetailPage() {
   return (
     <AppShell
       breadcrumb={[
-        { label: "Topics", to: "/topics" },
+        { label: "Library", to: "/topics" },
         { label: topic.display_name },
       ]}
     >
       <PageScaffold tier="reading">
         <div className={cn("flex flex-col", sectionGap)}>
         <div className="card overflow-hidden p-0">
-          <div className="border-b border-line/50 bg-gradient-to-br from-accent-dim/50 via-surface/20 to-transparent px-6 py-6">
+          <div className="border-b border-line/50 bg-linear-to-br from-accent-dim/50 via-surface/20 to-transparent px-6 py-6">
             <div className="flex flex-wrap gap-2">
               {topic.due_count > 0 && (
                 <Badge variant="low">{topic.due_count} due for review</Badge>
@@ -157,26 +161,23 @@ export function TopicDetailPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <ActionTile
-            icon={RotateCcw}
-            label="Fresh run"
-            hint="Reset session flow"
-            onClick={() => begin("replay")}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             disabled={starting}
-          />
-          <ActionTile
-            icon={Gauge}
-            label="Calibrate"
-            hint="Quick baseline"
-            href={`/baseline/${topic.id}`}
-          />
-          <ActionTile
-            icon={TrendingUp}
-            label="Progress"
-            hint="Scores & mastery"
-            href={`/mastery?topic=${encodeURIComponent(topic.id)}`}
-          />
+            onClick={() => begin("replay")}
+          >
+            <RotateCcw className="size-4" />
+            Fresh run
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/baseline/${topic.id}`}>Baseline check</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <Link to={`/mastery?topic=${encodeURIComponent(topic.id)}`}>See insights</Link>
+          </Button>
         </div>
 
         {topic.preview_concepts.length > 0 && (
@@ -208,51 +209,5 @@ export function TopicDetailPage() {
         </div>
       </PageScaffold>
     </AppShell>
-  );
-}
-
-function ActionTile({
-  icon: Icon,
-  label,
-  hint,
-  href,
-  onClick,
-  disabled,
-}: {
-  icon: typeof Play;
-  label: string;
-  hint: string;
-  href?: string;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  const className = cn(
-    "flex flex-col gap-2 rounded-xl border border-line/45 bg-surface/25 p-4 text-left transition-colors",
-    "hover:border-accent/25 hover:bg-surface/40",
-    disabled && "pointer-events-none opacity-50",
-  );
-
-  const inner = (
-    <>
-      <Icon className="size-5 text-accent/90" strokeWidth={1.5} />
-      <div>
-        <p className="text-sm font-medium text-on-surface">{label}</p>
-        <p className="mt-0.5 text-xs text-on-muted">{hint}</p>
-      </div>
-    </>
-  );
-
-  if (href) {
-    return (
-      <Link to={href} className={className}>
-        {inner}
-      </Link>
-    );
-  }
-
-  return (
-    <button type="button" className={className} onClick={onClick} disabled={disabled}>
-      {inner}
-    </button>
   );
 }

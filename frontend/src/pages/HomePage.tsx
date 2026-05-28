@@ -388,7 +388,7 @@ export function HomePage() {
                 {user ? (
                   <Button asChild size="lg">
                     <Link to="/topics">
-                      Go to topics
+                      Open library
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>

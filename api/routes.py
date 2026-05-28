@@ -499,6 +499,8 @@ def list_session_turns(session_id: str) -> list[TurnItem]:
                 evaluator_score=r.get("evaluator_score"),
                 evaluator_gaps=gaps,
                 evaluator_reasoning=r.get("evaluator_reasoning"),
+                evaluator_gap_type=r.get("evaluator_gap_type"),
+                evaluator_expert_framing=r.get("evaluator_expert_framing"),
             )
         )
     return out

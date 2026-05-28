@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, ScanLine } from "lucide-react";
+import { ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import {
   startBaseline,
@@ -10,6 +10,7 @@ import {
 } from "@/api/client";
 import type { BaselineView } from "@/api/types";
 import { AppShell } from "@/components/AppShell";
+import { InlineLoader } from "@/components/InlineLoader";
 import { PageScaffold } from "@/components/PageScaffold";
 import { Button } from "@/components/ui/button";
 import { sectionGap } from "@/lib/layout";
@@ -73,11 +74,11 @@ export function BaselinePage() {
   return (
     <AppShell
       breadcrumb={[
-        { label: "Topics", to: "/topics" },
+        { label: "Library", to: "/topics" },
         ...(topicId
           ? [{ label: view?.topic_display ?? topicId, to: `/topics/${topicId}` }]
           : []),
-        { label: "Calibrate" },
+        { label: "Baseline check" },
       ]}
     >
       <PageScaffold tier="reading">
@@ -95,7 +96,7 @@ export function BaselinePage() {
               </div>
               <div>
                 <h1 className="font-display text-2xl font-semibold text-on-surface">
-                  Quick calibration
+                  Baseline check
                 </h1>
                 <p className="mt-2 text-sm leading-relaxed text-on-muted">
                   Before we begin, let's see what you already know about{" "}
@@ -114,16 +115,16 @@ export function BaselinePage() {
               </div>
               <div className="flex gap-3">
                 <Button onClick={() => setStarted(true)}>
-                  Start calibration
+                  Start baseline
                 </Button>
                 <Button asChild variant="ghost">
-                  <Link to="/topics">Skip</Link>
+                  <Link to="/topics">Back to library</Link>
                 </Button>
               </div>
             </motion.div>
           )}
 
-          {loading && <p className="text-on-muted">Loading…</p>}
+          {loading && <InlineLoader label="Preparing baseline" />}
 
           {started && view && !view.done && (
             <motion.div
@@ -167,7 +168,7 @@ export function BaselinePage() {
                   Submit
                 </Button>
                 <Button asChild variant="ghost">
-                  <Link to="/topics">Quit</Link>
+                  <Link to="/topics">Back to library</Link>
                 </Button>
               </div>
             </motion.div>
@@ -181,7 +182,7 @@ export function BaselinePage() {
             >
               <div>
                 <p className="font-display text-lg font-semibold text-score-good">
-                  Calibration complete
+                  Baseline complete
                 </p>
                 <p className="mt-1 text-sm text-on-muted">
                   Study sessions will now adapt to your current level.
@@ -200,7 +201,7 @@ export function BaselinePage() {
                   </li>
                 ))}
               </ul>
-              <Button onClick={() => void goToStudy()}>Start studying</Button>
+              <Button onClick={() => void goToStudy()}>Enter focus</Button>
             </motion.div>
           )}
 

@@ -31,8 +31,8 @@ const VALID_FILTERS: TopicFilter[] = ["all", "due", "in_progress", "new"];
 
 const FILTERS: { id: TopicFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "due", label: "Due" },
-  { id: "in_progress", label: "In progress" },
+  { id: "due", label: "Queue" },
+  { id: "in_progress", label: "Active" },
   { id: "new", label: "New" },
 ];
 
@@ -168,6 +168,12 @@ export function TopicsPage() {
 
   const toolbar = (
     <div className={cn("flex flex-col", sectionGap)}>
+      <div>
+        <p className="text-xs uppercase tracking-[0.14em] text-on-muted/55">Library</p>
+        <p className="mt-1 text-sm text-on-muted">
+          Pick the next meaningful thing to think about.
+        </p>
+      </div>
       <div className="flex items-center gap-3">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-on-muted" />
@@ -175,7 +181,7 @@ export function TopicsPage() {
             type="search"
             value={inputQuery}
             onChange={(e) => handleQueryInput(e.target.value)}
-            placeholder="Search topics"
+            placeholder="Search topics, concepts, or ideas"
             className="h-11 rounded-xl border-line/50 bg-surface/30 pl-10"
             aria-label="Search topics"
           />
@@ -241,14 +247,14 @@ export function TopicsPage() {
         ) : (
           <div className={cn("flex flex-col", sectionGap)}>
             {sections.pickUp.length > 0 && (
-              <Section topics={sections.pickUp} label="Pick up" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
+              <Section topics={sections.pickUp} label="Continue momentum" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
             )}
             {sections.explore.length > 0 && (
-              <Section topics={sections.explore} label="Explore" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
+              <Section topics={sections.explore} label="Build next" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
             )}
             {libraryVisible.length > 0 && (
               <>
-                <Section topics={libraryVisible} label="Library" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
+                <Section topics={libraryVisible} label="All topics" reduce={reduce} starting={starting} enrollBusy={enrollBusy} onContinue={begin} onToggleEnroll={toggleEnroll} />
                 {sections.library.length > LIBRARY_CAP && !showAllLibrary && (
                   <button
                     type="button"

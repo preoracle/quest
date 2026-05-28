@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import ast
 import json
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD = 0.7
 
@@ -81,7 +82,32 @@ class EvaluatorOutput(BaseModel):
         return []
     reasoning: str = Field(
         ...,
-        description="One-sentence justification for the score",
+        description="3–4 sentence structured feedback shown directly to the student",
+    )
+    gap_type: Literal[
+        "none",
+        "linguistic_imprecision",
+        "missing_mechanism",
+        "missing_abstraction",
+        "wrong_model",
+    ] = Field(
+        default="none",
+        description=(
+            "Primary reason the answer is below 5: "
+            "'none' if score=5; "
+            "'linguistic_imprecision' if mechanism is right but vocabulary is informal; "
+            "'missing_mechanism' if factors named but causal chain absent; "
+            "'missing_abstraction' if chain traced but formal framework/term missing; "
+            "'wrong_model' if the causal reasoning itself is incorrect"
+        ),
+    )
+    expert_framing: str | None = Field(
+        default=None,
+        description=(
+            "1–2 sentences describing what a score-5 answer would contain, "
+            "shown to the student when score < 5. "
+            "Must start with 'A complete answer would...' and name the specific mechanism or term."
+        ),
     )
     inferred_concept_id: str | None = Field(
         None,
@@ -93,6 +119,30 @@ class EvaluatorOutput(BaseModel):
         le=1.0,
         description="Confidence in concept inference; use <0.7 to skip concept mastery",
     )
+
+    @model_validator(mode="after")
+    def normalize_eval_consistency(self) -> "EvaluatorOutput":
+        """Enforce internal consistency for downstream tutor and UI logic.
+
+        Some providers occasionally emit contradictory combinations
+        (e.g. score < 5 with gap_type='none', or score < 5 without expert framing).
+        Normalizing here prevents brittle behavior in the follow-up question flow.
+        """
+        if self.score >= 5:
+            self.gap_type = "none"
+            self.expert_framing = None
+            return self
+
+        if self.gap_type == "none":
+            # Sensible fallback when model omits/contradicts gap type.
+            self.gap_type = "missing_mechanism" if self.score <= 3 else "missing_abstraction"
+
+        if not (self.expert_framing or "").strip():
+            self.expert_framing = (
+                "A complete answer would state the precise causal mechanism and formal term, "
+                "then apply it directly to this specific scenario."
+            )
+        return self
 
     def normalized_score(self) -> float:
         """Map the 1–5 rubric score to [0, 1] for mastery running average."""

@@ -3,7 +3,7 @@ import { AuthControls } from "@/components/AuthControls";
 import { MobileNav } from "@/components/MobileNav";
 import { QuestLogo } from "@/components/QuestLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { BarChart2, BookOpen, Calendar, LayoutGrid, Radio } from "lucide-react";
+import { ArrowUpRight, BarChart2, BookOpen, Calendar, LayoutGrid, Radio } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { MasteryTicks } from "@/components/MasteryTicks";
 import { gutterPx } from "@/lib/layout";
@@ -11,17 +11,17 @@ import { cn } from "@/lib/utils";
 import { getActiveSession, type ActiveSessionInfo } from "@/lib/activeSession";
 
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: BookOpen },
-  { to: "/topics", label: "Topics", icon: LayoutGrid },
-  { to: "/due", label: "Due", icon: Calendar },
-  { to: "/mastery", label: "Progress", icon: BarChart2 },
+  { to: "/dashboard", label: "Focus", icon: BookOpen },
+  { to: "/topics", label: "Library", icon: LayoutGrid },
+  { to: "/due", label: "Queue", icon: Calendar },
+  { to: "/mastery", label: "Insights", icon: BarChart2 },
 ] as const;
 
 const PAGE_TITLE: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/topics": "Topics",
-  "/due": "Due for review",
-  "/mastery": "Progress",
+  "/dashboard": "Focus",
+  "/topics": "Library",
+  "/due": "Queue",
+  "/mastery": "Insights",
 };
 
 export function AppShell({
@@ -49,7 +49,8 @@ export function AppShell({
   }, []);
 
   const onSessionPage = pathname.startsWith("/session/");
-  const showSessionBanner = !!activeSession && !onSessionPage && !inSession;
+  const onDashboard = pathname === "/dashboard";
+  const showSessionBanner = !!activeSession && !onSessionPage && !inSession && !onDashboard;
 
   const pageTitle =
     !breadcrumb && !topicSession ? (PAGE_TITLE[pathname] ?? null) : null;
@@ -59,11 +60,11 @@ export function AppShell({
   }
 
   return (
-    <div className="noise-overlay mesh-bg flex h-dvh w-full overflow-hidden">
+    <div className="mesh-bg flex h-dvh w-full overflow-hidden">
       <div className="flex h-full min-h-0 w-full flex-1">
 
-        {/* Sidebar */}
-        <aside className="sidebar-bg hidden h-full w-rail shrink-0 flex-col border-r border-line/20 px-4 py-6 backdrop-blur-2xl lg:flex">
+        {/* Sidebar — hidden during active sessions to maximise study surface */}
+        <aside className={cn("sidebar-bg h-full w-rail shrink-0 flex-col border-r border-line/20 px-4 py-6", inSession ? "hidden" : "hidden lg:flex")}>
           <Link to="/dashboard" className="pl-1">
             <QuestLogo size="md" />
           </Link>
@@ -87,17 +88,86 @@ export function AppShell({
               </Link>
             ))}
           </nav>
+
+          <div className="mt-4 flex-1" />
+
+          <div className="space-y-2.5">
+            <div className="rounded-xl border border-line/30 bg-surface/20 p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-on-muted/55">
+                Session
+              </p>
+              {activeSession ? (
+                onDashboard ? (
+                  <div className="mt-2.5 rounded-lg border border-accent/20 bg-accent-dim/15 px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 text-accent">
+                      <Radio className="size-3 animate-pulse" />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.08em]">
+                        Live now
+                      </span>
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-on-surface">
+                      {activeSession.topicDisplay}
+                    </p>
+                    <p className="mt-1 text-[11px] text-on-muted/65">
+                      Continue from your focus board
+                    </p>
+                  </div>
+                ) : (
+                  <Link
+                    to={`/session/${activeSession.sessionId}`}
+                    className="mt-2.5 block rounded-lg border border-accent/25 bg-accent-dim/20 px-2.5 py-2 transition-colors hover:bg-accent-dim/35"
+                  >
+                    <div className="flex items-center gap-1.5 text-accent">
+                      <Radio className="size-3 animate-pulse" />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.08em]">
+                        Live now
+                      </span>
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-on-surface">
+                      {activeSession.topicDisplay}
+                    </p>
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent/85">
+                      Resume <ArrowUpRight className="size-3" />
+                    </p>
+                  </Link>
+                )
+              ) : (
+                <p className="mt-2 text-xs text-on-muted/55">
+                  No active session. Pick a topic and begin.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-line/25 bg-surface/10 p-2">
+              <Link
+                to="/due"
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-on-muted/70 transition-colors hover:bg-surface-muted/35 hover:text-on-surface"
+              >
+                <span>Review due concepts</span>
+                <ArrowUpRight className="size-3" />
+              </Link>
+              <Link
+                to="/mastery"
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-on-muted/70 transition-colors hover:bg-surface-muted/35 hover:text-on-surface"
+              >
+                <span>See mastery breakdown</span>
+                <ArrowUpRight className="size-3" />
+              </Link>
+            </div>
+          </div>
         </aside>
 
         {/* Main column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Header — clean flat bar */}
-          <header
-            className={cn("z-40 shrink-0 header-glass", gutterPx)}
-          >
+          <header className={cn("z-40 shrink-0 border-b border-line/35 bg-void/92", gutterPx)}>
             <div className="flex h-14 items-center gap-3">
-              <Link to="/dashboard" className="shrink-0 lg:hidden" aria-label="Dashboard">
+              <Link
+                to="/dashboard"
+                className={cn("shrink-0", !inSession && "lg:hidden")}
+                aria-label="Dashboard"
+              >
                 <QuestLogo size="sm" />
               </Link>
 
@@ -127,7 +197,7 @@ export function AppShell({
                   </nav>
                 )}
 
-                {topicSession && (
+                {topicSession && !inSession && (
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="truncate text-sm font-semibold text-on-surface">
                       {topicSession.name}
@@ -140,7 +210,7 @@ export function AppShell({
                   </div>
                 )}
 
-                {pageTitle && (
+                {pageTitle && pathname !== "/dashboard" && (
                   <span className="text-sm font-semibold text-on-surface">
                     {pageTitle}
                   </span>
@@ -151,9 +221,9 @@ export function AppShell({
                 {inSession && (
                   <Link
                     to={exitTo ?? "/topics"}
-                    className="hidden text-xs font-medium text-on-muted hover:text-on-surface sm:inline"
+                    className="text-xs font-medium text-on-muted/70 hover:text-on-surface transition-colors border border-line/40 rounded-md px-2.5 py-1 hover:border-line/70"
                   >
-                    ← Leave
+                    ← Exit session
                   </Link>
                 )}
                 {masteryScore !== undefined && masteryScore > 0 && (
@@ -170,7 +240,7 @@ export function AppShell({
             <Link
               to={`/session/${activeSession.sessionId}`}
               className={cn(
-                "flex shrink-0 items-center gap-2 border-b border-accent/20 bg-accent-dim/30 px-5 py-2 text-sm transition-colors hover:bg-accent-dim/50",
+                "flex shrink-0 items-center gap-2 border-b border-accent/20 bg-accent-dim/30 px-5 py-2 text-sm transition-colors hover:bg-accent-dim/50 lg:hidden",
                 gutterPx,
               )}
             >

@@ -79,7 +79,7 @@ export function MasteryPage() {
       breadcrumb={
         selectedTopic && selectedSummary
           ? [
-              { label: "Progress", to: "/mastery" },
+              { label: "Insights", to: "/mastery" },
               { label: selectedSummary.display_name },
             ]
           : undefined
@@ -96,10 +96,16 @@ export function MasteryPage() {
 
         {!loading && !selectedTopic && (
           <div className={cn("flex flex-col", sectionGap)}>
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-on-muted/55">Insights</p>
+              <p className="mt-1 text-sm text-on-muted">
+                Reflect on retention and decide what deserves your next deep pass.
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <StatCard label="Topics" value={String(rollup.topics)} />
+              <StatCard label="Threads" value={String(rollup.topics)} />
               <StatCard
-                label="Mastery"
+                label="Retention"
                 value={
                   rollup.totalConcepts > 0
                     ? `${Math.round((rollup.mastered / rollup.totalConcepts) * 100)}%`
@@ -108,9 +114,9 @@ export function MasteryPage() {
                 hint={`${rollup.mastered} of ${rollup.totalConcepts} concepts`}
               />
               <StatCard
-                label="Due for review"
+                label="In queue"
                 value={String(dueCount)}
-                hint={dueCount > 0 ? "See review queue" : "All caught up"}
+                hint={dueCount > 0 ? "Needs reinforcement" : "All reinforced"}
                 href={dueCount > 0 ? "/due" : undefined}
               />
             </div>
@@ -128,7 +134,7 @@ export function MasteryPage() {
                   <p className="mt-1 text-xs text-on-muted">
                     {t.mastered_count}/{t.concept_count} mastered ·{" "}
                     {t.avg_score_1_to_5.toFixed(1)}/5 avg
-                    {t.due_count > 0 ? ` · ${t.due_count} due` : ""}
+                    {t.due_count > 0 ? ` · ${t.due_count} in queue` : ""}
                   </p>
                   <div className="mt-2 h-1 overflow-hidden rounded-full bg-line/80">
                     <div
@@ -160,7 +166,7 @@ export function MasteryPage() {
         {!loading && selectedTopic && (
           <div className={cn("flex flex-col", sectionGap)}>
             <Button variant="outline" size="sm" className="w-fit" onClick={() => setParams({})}>
-              ← Overview
+              ← All insights
             </Button>
 
             {graph && graph.nodes.length > 0 && (
@@ -176,7 +182,7 @@ export function MasteryPage() {
                 onClick={() => setShowScores((v) => !v)}
                 className="flex w-full items-center justify-between rounded-xl border border-line/40 bg-surface/20 px-4 py-3 text-left text-sm font-medium text-on-surface"
               >
-                Concept scores
+                Concept understanding
                 <ChevronDown
                   className={cn(
                     "size-4 text-on-muted transition-transform",

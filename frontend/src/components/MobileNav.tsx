@@ -3,9 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { to: "/topics", label: "Topics", icon: LayoutGrid },
-  { to: "/due", label: "Study", icon: BookOpen },
-  { to: "/mastery", label: "Progress", icon: BarChart2 },
+  { to: "/topics", label: "Library", icon: LayoutGrid },
+  { to: "/due", label: "Queue", icon: BookOpen },
+  { to: "/mastery", label: "Insights", icon: BarChart2 },
 ] as const;
 
 export function MobileNav() {
@@ -17,7 +17,7 @@ export function MobileNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line/60 bg-surface/90 backdrop-blur-md lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line/60 bg-surface/95 lg:hidden"
       aria-label="Mobile navigation"
     >
       {TABS.map(({ to, label, icon: Icon }) => (

@@ -26,6 +26,8 @@ class EvaluationView(BaseModel):
     score: int
     gaps: list[str] = Field(default_factory=list)
     reasoning: str
+    gap_type: str | None = None
+    expert_framing: str | None = None
     inferred_concept_id: str | None = None
     inferred_concept_confidence: float = 0.0
 
@@ -79,6 +81,8 @@ def _values_to_view(
             score=ev.score,
             gaps=ev.gaps,
             reasoning=ev.reasoning,
+            gap_type=ev.gap_type,
+            expert_framing=ev.expert_framing,
             inferred_concept_id=ev.inferred_concept_id,
             inferred_concept_confidence=ev.inferred_concept_confidence,
         )
@@ -165,6 +169,8 @@ def _initial_graph_state(
         "advance_concept": False,
         "last_score": None,
         "last_evaluation": None,
+        "last_gap_type": None,
+        "last_expert_framing": None,
         "session_report": None,
         "current_concept_id": None,
         "current_concept_name": None,

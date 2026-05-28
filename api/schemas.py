@@ -193,6 +193,8 @@ class TurnItem(BaseModel):
     evaluator_score: int | None = None
     evaluator_gaps: list[str] = Field(default_factory=list)
     evaluator_reasoning: str | None = None
+    evaluator_gap_type: str | None = None
+    evaluator_expert_framing: str | None = None
 
 
 # Re-export for OpenAPI

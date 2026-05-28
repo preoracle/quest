@@ -25,7 +25,7 @@ export function SiteNav() {
   return (
     <motion.header
       className={cn(
-        "fixed top-0 right-0 left-0 z-40 border-b border-line/50 bg-void/70 backdrop-blur-xl",
+        "fixed top-0 right-0 left-0 z-40 border-b border-line/50 bg-void/90",
         !reduce && "transition-transform duration-300 ease-out",
         hidden && !reduce && "-translate-y-full",
       )}

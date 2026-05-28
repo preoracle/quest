@@ -16,6 +16,7 @@ import { ContentTrack } from "@/components/ContentColumn";
 import { SessionCompletePanel } from "@/components/SessionCompletePanel";
 import { SessionPanel } from "@/components/SessionPanel";
 import { SessionWorkspace } from "@/components/SessionWorkspace";
+import { ScoreReveal, type RevealData } from "@/components/ScoreReveal";
 import { SessionPageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { gutterPx } from "@/lib/layout";
@@ -51,6 +52,9 @@ export function SessionPage() {
 
   // Right panel
   const [topicNodes, setTopicNodes] = useState<GraphNode[]>([]);
+
+  // Score reveal overlay
+  const [pendingReveal, setPendingReveal] = useState<RevealData | null>(null);
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -137,6 +141,8 @@ export function SessionPage() {
               score: next.last_evaluation.score,
               gaps: next.last_evaluation.gaps,
               reasoning: next.last_evaluation.reasoning,
+              gap_type: next.last_evaluation.gap_type ?? null,
+              expert_framing: next.last_evaluation.expert_framing ?? null,
             }
           : null,
       };
@@ -157,11 +163,36 @@ export function SessionPage() {
         setCompletedCycles((prev) => [...prev, completed]);
         setActiveExchanges([]);
         setActiveConceptName(next.focus);
+
+        // Reveal the score for the completed concept
+        if (lastEval) {
+          setPendingReveal({
+            score: lastEval.score,
+            gaps: lastEval.gaps,
+            reasoning: lastEval.reasoning,
+            expert_framing: lastEval.expert_framing ?? null,
+            conceptName: prevFocus ?? activeConceptName,
+            conceptComplete: true,
+            nextConceptName: next.focus,
+          });
+        }
       } else {
         // Continue accumulating in the active concept cycle
         setActiveExchanges((prev) => [...prev, newExchange]);
         if (!activeConceptName && next.focus) {
           setActiveConceptName(next.focus);
+        }
+
+        // Show reveal for mid-concept evaluations too
+        if (newExchange.eval) {
+          setPendingReveal({
+            score: newExchange.eval.score,
+            gaps: newExchange.eval.gaps,
+            reasoning: newExchange.eval.reasoning,
+            expert_framing: newExchange.eval.expert_framing ?? null,
+            conceptName: activeConceptName ?? next.focus,
+            conceptComplete: false,
+          });
         }
       }
 
@@ -273,7 +304,7 @@ export function SessionPage() {
           <ContentTrack tier="reading">
             <p className="text-score-low">{error}</p>
             <Link to="/topics" className="mt-4 inline-block text-accent">
-              ← Topics
+              ← Library
             </Link>
           </ContentTrack>
         </div>
@@ -294,64 +325,71 @@ export function SessionPage() {
       )}
 
       {session && !loading && !session.done && (
-        <SessionWorkspace
-          className="min-w-0 flex-1"
-          cycles={completedCycles}
-          expandedCycleIds={expandedCycleIds}
-          onToggleCycle={toggleCycle}
-          scrollTrigger={submitCount}
-          panel={
-            <SessionPanel
-              scores={scoreHistory}
-              nodes={topicNodes}
-              visitedNames={visitedConceptNames}
-              activeName={activeConceptName}
-              keyGaps={keyGaps}
-              onWrapUp={() => void wrapUp()}
-              wrappingUp={wrappingUp}
-            />
-          }
-          activeContent={
-            <ActiveCycle
-              conceptName={activeConceptName}
-              exchanges={activeExchanges}
-              currentQuestion={
-                session.waiting_for_answer ? session.tutor_message : null
-              }
-              submitting={submitting}
-              error={error}
-            />
-          }
-          pinnedBottom={
-            isActive ? (
-              <AnswerBar
-                value={answer}
-                onChange={setAnswer}
-                onSubmit={() => void onSubmit()}
-                submitting={submitting}
+        <div className="relative min-w-0 flex-1 flex flex-col overflow-hidden">
+          <SessionWorkspace
+            className="min-w-0 flex-1"
+            cycles={completedCycles}
+            expandedCycleIds={expandedCycleIds}
+            onToggleCycle={toggleCycle}
+            scrollTrigger={submitCount}
+            panel={
+              <SessionPanel
+                scores={scoreHistory}
+                nodes={topicNodes}
+                visitedNames={visitedConceptNames}
+                activeName={activeConceptName}
+                keyGaps={keyGaps}
+                onWrapUp={() => void wrapUp()}
+                wrappingUp={wrappingUp}
               />
-            ) : (
-              <div className={cn(gutterPx, "py-4")}>
-                <ContentTrack tier="reading">
-                  <div className="rounded-2xl border border-line/50 bg-surface/30 px-5 py-4 text-sm">
-                    <p className="font-medium text-on-surface">Session paused</p>
-                    <p className="mt-2 text-on-muted">
-                      Start a new session to get a fresh question.
-                    </p>
-                    <Button
-                      className="mt-4"
-                      size="sm"
-                      disabled={submitting}
-                      onClick={() => void startFreshRun()}
-                    >
-                      New session
-                    </Button>
-                  </div>
-                </ContentTrack>
-              </div>
-            )
-          }
-        />
+            }
+            activeContent={
+              <ActiveCycle
+                conceptName={activeConceptName}
+                exchanges={activeExchanges}
+                currentQuestion={
+                  session.waiting_for_answer ? session.tutor_message : null
+                }
+                submitting={submitting}
+                error={error}
+              />
+            }
+            pinnedBottom={
+              isActive ? (
+                <AnswerBar
+                  value={answer}
+                  onChange={setAnswer}
+                  onSubmit={() => void onSubmit()}
+                  submitting={submitting}
+                />
+              ) : (
+                <div className={cn(gutterPx, "py-4")}>
+                  <ContentTrack tier="reading">
+                    <div className="rounded-2xl border border-line/50 bg-surface/30 px-5 py-4 text-sm">
+                      <p className="font-medium text-on-surface">Session paused</p>
+                      <p className="mt-2 text-on-muted">
+                        Open a new focus run when you're ready to continue.
+                      </p>
+                      <Button
+                        className="mt-4"
+                        size="sm"
+                        disabled={submitting}
+                        onClick={() => void startFreshRun()}
+                      >
+                        New session
+                      </Button>
+                    </div>
+                  </ContentTrack>
+                </div>
+              )
+            }
+          />
+          {/* Score reveal overlay — shown after each evaluated answer */}
+          <ScoreReveal
+            data={pendingReveal}
+            onDismiss={() => setPendingReveal(null)}
+          />
+        </div>
       )}
     </AppShell>
   );

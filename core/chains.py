@@ -106,10 +106,10 @@ def build_evaluator_chain() -> Runnable:
     # method="function_calling" sends the classic `tools` array format that all
     # OpenAI-compat providers (Groq, Cerebras, etc.) support — as opposed to the
     # newer OpenAI-only `json_schema` / strict mode.
-    # max_tokens=256: EvaluatorOutput JSON (score, 3 gaps, reasoning, concept_id, float)
-    # fits comfortably in ~100 tokens. 256 gives ample headroom.
+    # max_tokens=400: evaluator now includes richer reasoning + expert framing.
+    # Extra headroom avoids truncation while preserving deterministic scoring.
     model = _llm(
-        "LLM_EVAL_MODEL", DEFAULT_EVAL_MODEL, temperature=0, max_tokens=256, max_retries=3,
+        "LLM_EVAL_MODEL", DEFAULT_EVAL_MODEL, temperature=0, max_tokens=400, max_retries=3,
     ).with_structured_output(EvaluatorOutput, method="function_calling")
 
     def _prepare(inputs: dict) -> dict:

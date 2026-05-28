@@ -87,20 +87,28 @@ export function DuePage() {
 
   const toolbar =
     !isLoading && items.length > 0 ? (
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-on-muted">
-          <span className="font-semibold text-on-surface">{items.length}</span>{" "}
-          concept{items.length !== 1 ? "s" : ""} queued for spaced review
-        </p>
-        {mostUrgentTopic && (
-          <Button
-            size="sm"
-            disabled={!!starting}
-            onClick={() => void studyTopic(mostUrgentTopic)}
-          >
-            {starting === mostUrgentTopic ? "Starting…" : "Start most urgent"}
-          </Button>
-        )}
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-on-muted/55">Queue</p>
+          <p className="mt-1 text-sm text-on-muted">
+            Reinforce weak edges before they fade.
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm text-on-muted">
+            <span className="font-semibold text-on-surface">{items.length}</span>{" "}
+            concept{items.length !== 1 ? "s" : ""} in your reinforcement queue
+          </p>
+          {mostUrgentTopic && (
+            <Button
+              size="sm"
+              disabled={!!starting}
+              onClick={() => void studyTopic(mostUrgentTopic)}
+            >
+              {starting === mostUrgentTopic ? "Starting…" : "Enter queue"}
+            </Button>
+          )}
+        </div>
       </div>
     ) : undefined;
 
@@ -119,10 +127,10 @@ export function DuePage() {
             <CalendarCheck className="mb-4 size-10 text-accent/50" />
             <h1 className="font-display text-lg font-semibold">All caught up</h1>
             <p className="mt-2 max-w-sm text-sm text-on-muted">
-              Nothing is due for review. Check back after your next study sessions.
+              No concepts need reinforcement right now. Come back after your next session.
             </p>
             <Button asChild className="mt-8" variant="outline">
-              <Link to="/topics">Browse topics</Link>
+              <Link to="/topics">Open library</Link>
             </Button>
           </div>
         )}

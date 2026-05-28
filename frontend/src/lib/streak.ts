@@ -18,6 +18,14 @@ export function recordStudyDay(): void {
   }
 }
 
+/** Returns the set of ISO date strings when the user studied (last 90 days). */
+export function getStudyDates(): Set<string> {
+  const raw = localStorage.getItem(KEY);
+  if (!raw) return new Set();
+  const store = JSON.parse(raw) as StreakStore;
+  return new Set(store.dates);
+}
+
 export function getStudyStreak(): number {
   const raw = localStorage.getItem(KEY);
   if (!raw) return 0;

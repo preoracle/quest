@@ -64,7 +64,7 @@ export function SessionWorkspace({
 
         {/* Pinned bottom: answer bar */}
         {pinnedBottom && (
-          <div className="shrink-0 border-t border-line/40 bg-void/90 backdrop-blur-xl">
+          <div className="shrink-0 border-t border-line/40 bg-void/95">
             {pinnedBottom}
           </div>
         )}

@@ -47,17 +47,17 @@ export function SessionCompletePanel({
   const stats = [
     {
       value: String(evaluated),
-      label: "Questions explored",
+      label: "Thought steps",
       color: "text-on-surface",
     },
     {
       value: String(strongAnswers),
-      label: "Concepts you nailed",
+      label: "Strong concepts",
       color: "text-score-good",
     },
     {
       value: avgScore !== null && avgScore >= 3 ? "On track" : avgScore !== null ? "Keep going" : "–",
-      label: "Overall momentum",
+      label: "Momentum",
       color: avgScore !== null && avgScore >= 3 ? "text-score-good" : "text-accent",
       suffix: avgScore !== null ? <TrendingUp className="size-3.5 opacity-60" /> : null,
     },
@@ -150,7 +150,7 @@ export function SessionCompletePanel({
         {!topicComplete && onContinueStudy && (
           <Button disabled={continuingStudy} onClick={onContinueStudy}>
             <Play className="size-4" />
-            {continuingStudy ? "Starting…" : "Continue studying"}
+            {continuingStudy ? "Starting…" : "Continue focus"}
           </Button>
         )}
         {onStartFresh && (
@@ -166,14 +166,14 @@ export function SessionCompletePanel({
         <Button asChild variant="outline">
           <Link to="/topics">
             <Sparkles className="size-4" />
-            Topics
+            Library
           </Link>
         </Button>
         <Button asChild variant="outline">
-          <Link to="/due">Review queue</Link>
+          <Link to="/due">Queue</Link>
         </Button>
         <Button asChild variant="outline">
-          <Link to="/mastery">Progress</Link>
+          <Link to="/mastery">Insights</Link>
         </Button>
       </motion.div>
     </div>

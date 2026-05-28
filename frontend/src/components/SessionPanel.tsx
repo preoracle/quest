@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MasteryChart } from "@/components/MasteryChart";
 import { Button } from "@/components/ui/button";
+import { scoreColor } from "@/lib/cycles";
 import type { GraphNode } from "@/api/types";
 
 function useSessionTimer() {
@@ -21,7 +22,7 @@ function useSessionTimer() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-widest text-on-muted/75">
+    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-on-muted/60 font-mono">
       {children}
     </p>
   );
@@ -47,7 +48,8 @@ function topoSortNodes(nodes: GraphNode[]): GraphNode[] {
   return result;
 }
 
-function ConceptList({
+/** Visual knowledge map — DAG as a topological list with score indicators */
+function ConceptMap({
   nodes,
   visitedNames,
   activeName,
@@ -59,17 +61,16 @@ function ConceptList({
   if (nodes.length === 0) return null;
 
   const sorted = topoSortNodes(nodes);
-
   const doneCount = sorted.filter(
     (n) => visitedNames.has(n.name) && n.name !== activeName,
   ).length;
 
   return (
     <div>
-      <div className="mb-3 flex items-baseline justify-between">
-        <SectionLabel>Topic</SectionLabel>
-        <p className="text-[12px] font-medium tabular-nums text-on-muted/70">
-          {doneCount} / {sorted.length}
+      <div className="mb-3 flex items-center justify-between">
+        <SectionLabel>Knowledge map</SectionLabel>
+        <p className="font-mono text-[11px] tabular-nums text-on-muted/55">
+          {doneCount}/{sorted.length}
         </p>
       </div>
 
@@ -77,35 +78,49 @@ function ConceptList({
         {sorted.map((node) => {
           const isActive = node.name === activeName;
           const isDone = visitedNames.has(node.name) && !isActive;
+          // Depth indent for DAG hierarchy feel
+          const depth = node.prerequisites.length;
+          const indentCls = depth === 0 ? "" : depth === 1 ? "ml-3" : "ml-5";
 
           return (
             <div
               key={node.id}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors",
-                isActive && "bg-accent/10",
+                "flex items-center gap-2 rounded-md px-2 py-[5px] transition-all",
+                indentCls,
+                isActive && "bg-accent/10 ring-1 ring-accent/15",
               )}
             >
+              {/* State dot */}
               <span
                 className={cn(
-                  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[9px]",
+                  "flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] leading-none transition-all",
                   isDone && "bg-score-good/20 text-score-good",
-                  isActive && "bg-accent/25 text-accent text-[10px]",
-                  !isDone && !isActive && "text-on-muted/40",
+                  isActive && "bg-accent/25 text-accent animate-pulse",
+                  !isDone && !isActive && "bg-surface-muted/40 text-on-muted/30",
                 )}
               >
                 {isDone ? "✓" : isActive ? "▶" : "·"}
               </span>
+
+              {/* Concept name */}
               <span
                 className={cn(
-                  "truncate text-[13px] leading-[1.4]",
-                  isDone && "text-on-muted/60",
-                  isActive && "font-medium text-on-surface",
-                  !isDone && !isActive && "text-on-muted/70",
+                  "flex-1 truncate text-[12px] leading-[1.4]",
+                  isDone && "text-on-muted/50 line-through decoration-on-muted/20",
+                  isActive && "font-semibold text-on-surface",
+                  !isDone && !isActive && "text-on-muted/65",
                 )}
               >
                 {node.name}
               </span>
+
+              {/* Score dot for visited */}
+              {isDone && node.score_1_to_5 > 0 && (
+                <span className={cn("font-mono text-[10px] tabular-nums shrink-0", scoreColor(node.score_1_to_5))}>
+                  {node.score_1_to_5}
+                </span>
+              )}
             </div>
           );
         })}
@@ -125,9 +140,9 @@ function KeyGaps({ gaps }: { gaps: string[] }) {
         {gaps.map((g, i) => (
           <li
             key={i}
-            className="flex items-start gap-2 text-[12px] leading-[1.55] text-on-muted/80"
+            className="flex items-start gap-2 text-[12px] leading-[1.55] text-on-muted/75"
           >
-            <span className="mt-0.5 shrink-0 text-score-low/70">↳</span>
+            <span className="mt-0.5 shrink-0 text-score-low/60">↳</span>
             <span>{g}</span>
           </li>
         ))}
@@ -154,31 +169,38 @@ export function SessionPanel({
   wrappingUp: boolean;
 }) {
   const timer = useSessionTimer();
+  const avgScore = scores.length > 0
+    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+    : null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5">
-        {/* Timer */}
+
+        {/* Timer + avg score */}
         <div className="flex items-center justify-between">
-          <SectionLabel>Session</SectionLabel>
-          <p className="text-[12px] font-medium tabular-nums text-on-muted/70">
-            {timer}
-          </p>
-        </div>
-
-        {/* Mastery chart */}
-        <div>
-          <div className="mb-3">
-            <SectionLabel>Understanding</SectionLabel>
+          <div>
+            <SectionLabel>Session</SectionLabel>
+            <p className="mt-0.5 font-mono text-[13px] font-medium text-on-surface/80">{timer}</p>
           </div>
-          <MasteryChart scores={scores} />
+          {avgScore && (
+            <div className="text-right">
+              <SectionLabel>Avg score</SectionLabel>
+              <p className={cn("mt-0.5 font-mono text-[13px] font-bold tabular-nums",
+                parseFloat(avgScore) >= 4 ? "text-score-good" :
+                parseFloat(avgScore) >= 3 ? "text-score-mid" : "text-score-low"
+              )}>
+                {avgScore}/5
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Concept list */}
+        {/* Knowledge map — concept DAG with live state */}
         {nodes.length > 0 && (
           <>
             <div className="border-t border-line/20" />
-            <ConceptList
+            <ConceptMap
               nodes={nodes}
               visitedNames={visitedNames}
               activeName={activeName}
@@ -193,6 +215,19 @@ export function SessionPanel({
             <KeyGaps gaps={keyGaps} />
           </>
         )}
+
+        {/* Score chart — secondary, below the map */}
+        {scores.length > 1 && (
+          <>
+            <div className="border-t border-line/20" />
+            <div>
+              <div className="mb-3">
+                <SectionLabel>Score trend</SectionLabel>
+              </div>
+              <MasteryChart scores={scores} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Wrap up — pinned at bottom */}
@@ -204,7 +239,7 @@ export function SessionPanel({
           onClick={onWrapUp}
           disabled={wrappingUp}
         >
-          {wrappingUp ? "Wrapping up…" : "Wrap up session"}
+          {wrappingUp ? "Closing…" : "Pause and reflect"}
         </Button>
       </div>
     </div>

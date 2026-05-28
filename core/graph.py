@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Literal, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.exceptions import OutputParserException
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
@@ -123,6 +124,8 @@ class QuestState(TypedDict, total=False):
     advance_concept: bool
     last_score: int | None
     last_evaluation: dict | None
+    last_gap_type: str | None
+    last_expert_framing: str | None
     recent_scores: list[int]  # last N scores on the current concept (reset on concept change)
     replay_mode: bool
     completed_concept_ids: list[str]
@@ -361,11 +364,18 @@ def build_quest_graph(checkpointer):
             # tutor two signals it otherwise can't see from conversation alone:
             # (1) how many turns remain so it knows when to wrap up or go deeper
             # (2) whether the student is stuck (scores ≤ 3 for 3+ turns in a row)
+            # (3) what evaluation gap was observed on the last answer
             max_turns = CONCEPT_MAX_TURNS  # 8
             turns_left = max(0, max_turns - turn_count)
-            needs_pace_note = turn_count >= 3 or is_stuck or is_plateau
-            if needs_pace_note:
-                parts = [f"turn {turn_count + 1} of {max_turns} on this concept — {turns_left} left"]
+            needs_instructor_note = turn_count >= 1
+            if needs_instructor_note:
+                last_eval = state.get("last_evaluation") or {}
+                last_score = last_eval.get("score")
+                last_gap_type = last_eval.get("gap_type", "none")
+                last_expert_framing = last_eval.get("expert_framing")
+                parts: list[str] = []
+                if turn_count >= 3 or is_stuck or is_plateau:
+                    parts.append(f"turn {turn_count + 1} of {max_turns} on this concept — {turns_left} left")
                 if is_stuck or is_plateau:
                     score_str = " → ".join(str(s) for s in recent_scores[-4:])
                     parts.append(
@@ -375,12 +385,25 @@ def build_quest_graph(checkpointer):
                         "the one they cannot answer — strip back to first principles. "
                         "ONE STEP SMALLER."
                     )
-                else:
+                elif turn_count >= 3:
                     parts.append(
                         "if the student seems unsure, go smaller and more concrete"
                     )
-                pace_note = "[Instructor note: " + " | ".join(parts) + "]"
-                invoke_history = persisted + [HumanMessage(content=pace_note)]
+                if last_score is not None and turn_count >= 1:
+                    if last_score >= 4 and last_expert_framing:
+                        probe_target = str(last_expert_framing)[:240]
+                        parts.append(
+                            f"Last eval: {last_score}/5, gap={last_gap_type}. "
+                            "Probe toward this missing layer WITHOUT revealing it — "
+                            f"ask a question that forces them to articulate: {probe_target}"
+                        )
+                    else:
+                        parts.append(f"Last eval: {last_score}/5, gap={last_gap_type}")
+                if parts:
+                    pace_note = "[Instructor note: " + " | ".join(parts) + "]"
+                    invoke_history = persisted + [HumanMessage(content=pace_note)]
+                else:
+                    invoke_history = persisted
             else:
                 invoke_history = persisted
 
@@ -431,13 +454,25 @@ def build_quest_graph(checkpointer):
         )
         # LLM evaluator call — NO database connection held during this
         turn_idx = state.get("turn_idx", 0)
-        evaluation: EvaluatorOutput = _timed_invoke(
-            evaluator,
-            payload,
-            chain_name="evaluator",
-            session_id=state["session_id"],
-            turn_idx=turn_idx,
-        )
+        try:
+            evaluation: EvaluatorOutput = _timed_invoke(
+                evaluator,
+                payload,
+                chain_name="evaluator",
+                session_id=state["session_id"],
+                turn_idx=turn_idx,
+            )
+        except OutputParserException:
+            # Some OpenAI-compatible providers occasionally emit a tool name with
+            # a "functions." prefix ("functions.EvaluatorOutput"), which fails
+            # LangChain's strict parser. One immediate retry usually succeeds.
+            evaluation = _timed_invoke(
+                evaluator,
+                payload,
+                chain_name="evaluator",
+                session_id=state["session_id"],
+                turn_idx=turn_idx,
+            )
         concept_id = state.get("current_concept_id") or evaluation.inferred_concept_id
         # Brief write
         with queries.get_connection() as conn:
@@ -450,6 +485,8 @@ def build_quest_graph(checkpointer):
                 evaluator_score=evaluation.score,
                 evaluator_gaps=evaluation.gaps,
                 evaluator_reasoning=evaluation.reasoning,
+                evaluator_gap_type=evaluation.gap_type,
+                evaluator_expert_framing=evaluation.expert_framing,
                 evaluator_concept_id=concept_id,
                 evaluator_concept_confidence=(
                     1.0 if state.get("current_concept_id")
@@ -469,6 +506,8 @@ def build_quest_graph(checkpointer):
             "turn_idx": turn_idx + 1,
             "last_score": evaluation.score,
             "last_evaluation": evaluation.model_dump(),
+            "last_gap_type": evaluation.gap_type,
+            "last_expert_framing": evaluation.expert_framing,
             "recent_scores": recent,
             "history": messages_to_dicts(history),
         }

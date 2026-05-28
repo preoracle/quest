@@ -4,7 +4,13 @@ export interface CycleExchange {
   id: string;
   question: string;
   answer: string;
-  eval: { score: number; gaps: string[]; reasoning: string } | null;
+  eval: {
+    score: number;
+    gaps: string[];
+    reasoning: string;
+    gap_type?: string | null;
+    expert_framing?: string | null;
+  } | null;
 }
 
 export interface CompletedCycle {
@@ -61,6 +67,8 @@ export function buildExchangesFromTurns(turns: TurnItem[]): CycleExchange[] {
                 score: t.evaluator_score,
                 gaps: t.evaluator_gaps ?? [],
                 reasoning: t.evaluator_reasoning ?? "",
+                gap_type: t.evaluator_gap_type ?? null,
+                expert_framing: t.evaluator_expert_framing ?? null,
               }
             : null,
       });
