@@ -164,8 +164,7 @@ export function BaselinePage() {
                   disabled={submitting || !answer.trim()}
                   onClick={() => void onSubmit()}
                 >
-                  {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Submit
+                  {submitting ? "Submitting…" : "Submit"}
                 </Button>
                 <Button asChild variant="ghost">
                   <Link to="/topics">Back to library</Link>
