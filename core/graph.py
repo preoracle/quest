@@ -123,6 +123,7 @@ class QuestState(TypedDict, total=False):
     advance_concept: bool
     last_score: int | None
     last_evaluation: dict | None
+    recent_scores: list[int]  # last N scores on the current concept (reset on concept change)
     replay_mode: bool
     completed_concept_ids: list[str]
     session_report: dict | None
@@ -281,6 +282,7 @@ def build_quest_graph(checkpointer):
         }
         if reset_turns:
             patch["history"] = []
+            patch["recent_scores"] = []
         return patch
 
     def ask_question(state: QuestState) -> dict:
@@ -293,6 +295,12 @@ def build_quest_graph(checkpointer):
         user_id = state["user_id"]
 
         # Opening turn: one-shot instructor steer (not saved). Follow-ups use real dialogue.
+        recent_scores: list[int] = list(state.get("recent_scores") or [])
+        # Stuck = last 3+ scores all ≤ 3 (student plateauing, not improving)
+        is_stuck = len(recent_scores) >= 3 and all(s <= 3 for s in recent_scores[-3:])
+        # Plateau = scores oscillating without reaching 4 over last 4 turns
+        is_plateau = len(recent_scores) >= 4 and max(recent_scores[-4:]) <= 3
+
         if turn_count == 0:
             steer = (
                 "[Instructor note — not the student's words. "
@@ -300,7 +308,10 @@ def build_quest_graph(checkpointer):
                 f"{_TASK_INSTRUCTION}"
             )
             if scope:
-                steer += f" Probe scope (shape the question; do not quote verbatim): {scope}"
+                # One punchy nudge — cap at 120 chars so the scope hint doesn't
+                # balloon into a multi-part brief that tempts compound questions.
+                scope_hint = scope[:120].rstrip()
+                steer += f" Core tension to probe (one angle only, do not quote): {scope_hint}"
             # Brief read — connection held for ms, released before LLM call
             with queries.get_connection() as conn:
                 prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=5)
@@ -346,11 +357,38 @@ def build_quest_graph(checkpointer):
             steer += "]"
             invoke_history = [HumanMessage(content=steer)]
         else:
-            invoke_history = persisted
+            # Follow-up turns: inject a lightweight instructor note that gives the
+            # tutor two signals it otherwise can't see from conversation alone:
+            # (1) how many turns remain so it knows when to wrap up or go deeper
+            # (2) whether the student is stuck (scores ≤ 3 for 3+ turns in a row)
+            max_turns = CONCEPT_MAX_TURNS  # 8
+            turns_left = max(0, max_turns - turn_count)
+            needs_pace_note = turn_count >= 3 or is_stuck or is_plateau
+            if needs_pace_note:
+                parts = [f"turn {turn_count + 1} of {max_turns} on this concept — {turns_left} left"]
+                if is_stuck or is_plateau:
+                    score_str = " → ".join(str(s) for s in recent_scores[-4:])
+                    parts.append(
+                        f"STUCK PATTERN detected (scores: {score_str}). "
+                        "Do NOT ask a bigger or similar question. "
+                        "Find the single most primitive sub-question hiding inside "
+                        "the one they cannot answer — strip back to first principles. "
+                        "ONE STEP SMALLER."
+                    )
+                else:
+                    parts.append(
+                        "if the student seems unsure, go smaller and more concrete"
+                    )
+                pace_note = "[Instructor note: " + " | ".join(parts) + "]"
+                invoke_history = persisted + [HumanMessage(content=pace_note)]
+            else:
+                invoke_history = persisted
 
         # LLM call — NO database connection held during this
         turn_idx = state.get("turn_idx", 0)
-        chain = build_socratic_chain(topic=topic_id)
+        # Higher temperature on opening turns → more angle diversity across sessions.
+        # Follow-up turns stay grounded at 0.7 to track the student's actual words.
+        chain = build_socratic_chain(topic=topic_id, temperature=0.85 if turn_count == 0 else 0.7)
         response = _timed_invoke(
             chain,
             {"history": invoke_history},
@@ -421,10 +459,17 @@ def build_quest_graph(checkpointer):
         history = messages_from_dicts(state.get("history") or [])
         history.append(HumanMessage(content=state["user_input"]))
 
+        # Keep a rolling window of the last 4 scores on this concept so the
+        # tutor steer can detect a stuck pattern (e.g., 2-3-2-3 plateau).
+        recent = list(state.get("recent_scores") or [])
+        recent.append(evaluation.score)
+        recent = recent[-4:]  # keep last 4 only
+
         return {
             "turn_idx": turn_idx + 1,
             "last_score": evaluation.score,
             "last_evaluation": evaluation.model_dump(),
+            "recent_scores": recent,
             "history": messages_to_dicts(history),
         }
 

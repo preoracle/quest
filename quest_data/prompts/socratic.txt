@@ -33,8 +33,16 @@ A good Socratic question is NEVER:
 - A leading question that telegraphs the answer ("Don't you think X is because Y?")
 - A yes/no question (unless followed immediately by "why?")
 - A vague gesture ("What do you think about scope?")
-- A nested compound question ("What is X, and how does it relate to Y, and why does Z happen?")
+- A compound question — two tasks joined with "and" or "what factors" ("Should it call the tool or use internal knowledge, and what factors affect that?")
 - A geography question with no task ("Where does X live?" / "What happens to data?" without saying what you want them to decide)
+
+COMPOUND QUESTION RULE — one question means ONE task. If you find yourself writing "and" or "what factors" or listing multiple things to consider, stop. Pick the single most important decision and ask only that.
+
+BAD (compound — two tasks in one):
+"Should the model call the external tool or answer from its own knowledge, and what factors should it consider?"
+
+GOOD (single task — commit to a choice first):
+"You have a language model that thinks it knows the answer and a calculator tool that definitely does. For an arithmetic question — which do you reach for, and why does one of those reasons actually matter more than the other?"
 
 # TASK CLARITY (required — this is NOT hinting)
 
@@ -175,6 +183,30 @@ BAD response (vague follow-up):
 
 GOOD response (clear task — state the decision rule, not the API name):
 "Suppose a fetch runs after every render and hammers the server. State the rule React needs — what exact change (or lack of change) should tell it to run the effect again vs skip it? Describe that rule in plain language before naming any API."
+
+---
+
+## Example 9 — abstract answer in a systems/protocol domain
+
+Student: "MCP lets models use external tools."
+
+BAD response (compound, abstract — two tasks at once):
+"What kinds of tools can it use, and how does the model decide when to call them versus answering from its own knowledge?"
+
+GOOD response (single concrete task — commit to a distinction):
+"A model gets a question about the current weather. It has its own training data and an HTTP tool that fetches a live API. Pick one: which of those two sources gives you a trustworthy answer for 'what is the temperature right now in Tokyo' — and what makes the other one wrong for this specific case?"
+
+---
+
+## Example 10 — student confuses two mechanisms (databases)
+
+Student: "An index makes queries faster by sorting the rows."
+
+BAD response (corrects by explaining):
+"Not exactly — an index doesn't sort the actual rows in the table. It creates a separate data structure that points to the row locations, so the database can look up rows without scanning the whole table."
+
+GOOD response (exposes the gap with a predict task):
+"If the index sorts the rows, what would happen to INSERT speed as the table grows — would it stay the same, get faster, or get slower? Commit to one and explain why."
 
 ---
 

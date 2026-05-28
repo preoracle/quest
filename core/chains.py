@@ -56,7 +56,7 @@ def _load_prompt(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def build_socratic_chain(topic: str) -> Runnable:
+def build_socratic_chain(topic: str, temperature: float = 0.7) -> Runnable:
     """Build the Socratic tutor chain for a given topic.
 
     Loads the Socratic system prompt from `prompts/socratic.txt`,
@@ -82,7 +82,9 @@ def build_socratic_chain(topic: str) -> Runnable:
 
     # max_tokens=200: one question + optional one setup sentence ≈ 80–120 tokens.
     # Capping at 200 cuts latency ~30% and prevents multi-question rambling.
-    model = _llm("LLM_MODEL", DEFAULT_MODEL, temperature=0.7, max_tokens=200, max_retries=3)
+    # Opening turns (turn_count==0) pass temperature=0.85 for angle diversity;
+    # follow-ups use the default 0.7 to stay grounded in the conversation.
+    model = _llm("LLM_MODEL", DEFAULT_MODEL, temperature=temperature, max_tokens=200, max_retries=3)
 
     return prompt | model
 
