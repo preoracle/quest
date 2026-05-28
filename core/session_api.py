@@ -9,7 +9,9 @@ from __future__ import annotations
 import sqlite3
 
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+import datetime as _dt
+
+from pydantic import BaseModel, Field, field_validator
 
 from core.graph import checkpointer_session, build_quest_graph, seed_state_from_turns
 from core.models import EvaluatorOutput
@@ -44,6 +46,16 @@ class SessionView(BaseModel):
     summary: str | None = None
     report: SessionReport | None = None
     ended_at: str | None = None
+
+    @field_validator("ended_at", mode="before")
+    @classmethod
+    def coerce_ended_at(cls, v: object) -> str | None:
+        """Postgres returns ended_at as datetime; SQLite returns str. Normalize to ISO string."""
+        if v is None:
+            return None
+        if isinstance(v, (_dt.datetime, _dt.date)):
+            return v.isoformat()
+        return str(v)
 
 
 def _graph_config(session_id: str) -> dict:
@@ -201,10 +213,14 @@ def get_session_view(session_id: str) -> SessionView:
                 ended_at=row["ended_at"],
             )
 
-        # No graph state yet — session was created by POST /sessions but not yet
-        # initialised (first-question generation deferred).  Run the graph now so
-        # the Claude call happens here while the SessionPage shows its skeleton.
-        if not values and not row.get("ended_at"):
+        # No graph state yet — OR partial checkpoint from a failed graph.invoke()
+        # (e.g. LLM API error mid-run): pick_concept wrote state but ask_question
+        # never completed, so tutor_message is null and the session looks alive but
+        # is permanently stuck.  Treat both cases as uninitialised and re-run.
+        def _is_broken_state(v: dict) -> bool:
+            return bool(v) and not v.get("tutor_message") and not v.get("done")
+
+        if (not values or _is_broken_state(values)) and not row.get("ended_at"):
             # Brief write before Claude call — own connection, released immediately
             with queries.get_connection() as conn:
                 concept_list = queries.upsert_topic_concepts(conn, topic_data)
@@ -324,6 +340,14 @@ def submit_turn(
             raise ValueError(f"Unknown session: {session_id}")
         if row["ended_at"]:
             raise ValueError(f"Session already ended: {session_id}")
+        # Per-user rate limit: 60 student turns/hour prevents automated calibration
+        # attacks while leaving ample headroom for real humans (~6 turns/session).
+        turn_count = queries.count_user_turns_last_hour(conn, row["user_id"])
+        if turn_count >= 60:
+            raise ValueError(
+                f"Rate limit: user submitted {turn_count} turns in the last hour "
+                "(max 60). Please wait before continuing."
+            )
         topic_data = load_topic(row["topic"])
         display = topic_data.get("display_name") or row["topic"]
 

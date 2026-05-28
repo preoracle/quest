@@ -160,14 +160,16 @@ def cmd_topic_new(argv_tail: list[str]) -> int:
 
 
 def _require_api_key() -> int | None:
-    """Return an exit code if ANTHROPIC_API_KEY is missing."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if key.startswith("sk-ant-"):
+    """Check that the LLM proxy is configured (LLM_BASE_URL + LLM_API_KEY)."""
+    base_url = os.environ.get("LLM_BASE_URL", "").strip()
+    api_key = os.environ.get("LLM_API_KEY", "").strip()
+    if base_url and api_key:
         return None
     print(
-        "Quest needs ANTHROPIC_API_KEY to run sessions.\n\n"
-        "  export ANTHROPIC_API_KEY=sk-ant-...\n"
-        "  # or put it in:\n"
+        "Quest needs LLM_BASE_URL and LLM_API_KEY to run sessions.\n\n"
+        "  export LLM_BASE_URL=http://localhost:3001/v1\n"
+        "  export LLM_API_KEY=freellmapi-dev\n"
+        "  # or put them in:\n"
         f"  {env_file()}\n",
         file=sys.stderr,
     )

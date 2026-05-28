@@ -70,6 +70,23 @@ CREATE TABLE IF NOT EXISTS user_topics (
   PRIMARY KEY (user_id, topic_id)
 );
 
+CREATE TABLE IF NOT EXISTS llm_calls (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  turn_idx      INTEGER,
+  chain         TEXT NOT NULL,   -- 'tutor' | 'evaluator' | 'summarizer' | 'topic_generator'
+  model         TEXT NOT NULL,   -- model ID from ChatOpenAI config
+  latency_ms    INTEGER,
+  input_tokens  INTEGER,
+  output_tokens INTEGER,
+  retries       INTEGER NOT NULL DEFAULT 0,
+  success       INTEGER NOT NULL DEFAULT 1,
+  error         TEXT,            -- exception class name on failure
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_idx);
 CREATE INDEX IF NOT EXISTS idx_mastery_user ON mastery(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_topics_user ON user_topics(user_id);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_chain_created ON llm_calls(chain, created_at);

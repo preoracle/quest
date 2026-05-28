@@ -18,21 +18,36 @@ def apply_evaluation_to_mastery(
     evaluation: EvaluatorOutput,
     *,
     current_concept_id: str | None = None,
+    concept_list: list[dict] | None = None,
 ) -> None:
-    """Update topic mastery and the active concept (study uses current, not inferred)."""
+    """Update topic mastery and the active concept (study uses current, not inferred).
+
+    concept_list — the session's concept list from graph state.  When provided,
+    any inferred_concept_id returned by the evaluator is validated against it.
+    Hallucinated IDs (not in the list) are silently dropped so phantom mastery
+    rows are never written.
+    """
     normalized = evaluation.normalized_score()
     quality = evaluation.score
 
     _upsert_with_sm2(conn, user_id, topic_id, normalized, quality)
 
+    # Build a set of valid concept IDs for quick validation
+    valid_ids: set[str] = {c["id"] for c in concept_list} if concept_list else set()
+
     concept_id = current_concept_id
     if (
         not concept_id
         and evaluation.inferred_concept_id
-        and evaluation.inferred_concept_confidence
-        >= CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD
+        and evaluation.inferred_concept_confidence >= CONCEPT_INFERENCE_CONFIDENCE_THRESHOLD
     ):
-        concept_id = evaluation.inferred_concept_id
+        inferred = evaluation.inferred_concept_id
+        # Only trust the inferred ID if it actually exists in the concept list.
+        # Weaker models can be confidently wrong — reject rather than corrupt mastery.
+        if not valid_ids or inferred in valid_ids:
+            concept_id = inferred
+        # else: silently discard the hallucinated concept ID
+
     if concept_id:
         _upsert_with_sm2(conn, user_id, concept_id, normalized, quality)
 

@@ -55,12 +55,20 @@ def get_topic_graph(
         if not isinstance(prereqs, list):
             prereqs = []
         m = mastery_by_id.get(c["id"])
+        # Namespace bare prerequisite ids so they match the namespaced concept ids
+        # (concepts are stored as "{topic}:{local_id}" but prereqs are stored as
+        # bare local ids from the YAML).  Normalising here keeps the frontend
+        # topo-sort simple: every id and every prerequisite id share the same
+        # "{topic}:{local}" format.
+        namespaced_prereqs = [
+            p if ":" in p else f"{topic_id}:{p}" for p in prereqs
+        ]
         nodes.append(
             GraphNode(
                 id=c["id"],
                 name=c["name"],
                 description=(c.get("description") or "")[:200],
-                prerequisites=[str(p) for p in prereqs],
+                prerequisites=namespaced_prereqs,
                 score_1_to_5=m.score_1_to_5 if m else 0.0,
                 num_evaluations=m.num_evaluations if m else 0,
             )

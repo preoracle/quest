@@ -112,6 +112,45 @@ export function DueSkeleton() {
   );
 }
 
+// ── Session page skeleton ─────────────────────────────────────────────────
+export function SessionPageSkeleton({ isFresh = false }: { isFresh?: boolean }) {
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Concept label */}
+      <Skeleton className="h-2.5 w-24" />
+      {/* Question lines */}
+      <div className="flex flex-col gap-2.5">
+        <Skeleton className="h-5 w-full" />
+        <Skeleton className="h-5 w-[90%]" />
+        <Skeleton className="h-5 w-[78%]" />
+      </div>
+      {/* Spinner + label */}
+      <div className="flex items-center gap-2 pt-1 text-xs text-on-muted/40">
+        <span className="size-3 animate-spin rounded-full border border-line border-t-accent" />
+        {isFresh ? "Generating your first question…" : "Loading session…"}
+      </div>
+      {/* Answer bar placeholder */}
+      <div className="mt-2 rounded-2xl border border-line/30 bg-surface/20 px-5 py-4">
+        <Skeleton className="mb-3 h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+        <div className="mt-4 flex justify-end">
+          <Skeleton className="h-8 w-24 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Evaluating skeleton (while answer is being scored) ────────────────────
+export function EvaluatingSkeleton() {
+  return (
+    <div className="flex items-center gap-2 text-xs text-on-muted/40">
+      <span className="size-3 animate-spin rounded-full border border-line border-t-accent" />
+      Evaluating your answer…
+    </div>
+  );
+}
+
 // ── Mastery page skeleton ─────────────────────────────────────────────────
 export function MasterySkeleton() {
   return (

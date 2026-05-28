@@ -27,6 +27,26 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Topological sort: prerequisites before dependents, preserving DAG order. */
+function topoSortNodes(nodes: GraphNode[]): GraphNode[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const visited = new Set<string>();
+  const result: GraphNode[] = [];
+
+  function visit(node: GraphNode) {
+    if (visited.has(node.id)) return;
+    for (const prereqId of node.prerequisites) {
+      const prereq = byId.get(prereqId);
+      if (prereq) visit(prereq);
+    }
+    visited.add(node.id);
+    result.push(node);
+  }
+
+  for (const node of nodes) visit(node);
+  return result;
+}
+
 function ConceptList({
   nodes,
   visitedNames,
@@ -38,7 +58,9 @@ function ConceptList({
 }) {
   if (nodes.length === 0) return null;
 
-  const doneCount = nodes.filter(
+  const sorted = topoSortNodes(nodes);
+
+  const doneCount = sorted.filter(
     (n) => visitedNames.has(n.name) && n.name !== activeName,
   ).length;
 
@@ -47,12 +69,12 @@ function ConceptList({
       <div className="mb-3 flex items-baseline justify-between">
         <SectionLabel>Topic</SectionLabel>
         <p className="text-[12px] font-medium tabular-nums text-on-muted/70">
-          {doneCount} / {nodes.length}
+          {doneCount} / {sorted.length}
         </p>
       </div>
 
       <div className="space-y-px">
-        {nodes.map((node) => {
+        {sorted.map((node) => {
           const isActive = node.name === activeName;
           const isDone = visitedNames.has(node.name) && !isActive;
 

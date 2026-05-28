@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 from typing import Literal, TypedDict
 
@@ -23,13 +24,64 @@ from db import queries
 
 CONCEPT_MASTERED_MIN_SCORE = 4
 CONCEPT_MASTERED_MIN_TURNS = 3
+# Safety valve: advance regardless of score after this many turns on one concept.
+# Prevents students from being trapped when the evaluator is miscalibrated or
+# the question is genuinely too hard. Not a mastery signal — mastery is not
+# written (SM-2 treats unmastered concepts as due immediately for next session).
+CONCEPT_MAX_TURNS = 8
 
 _TASK_INSTRUCTION = (
     "Ask ONE question. The student must understand the intellectual TASK "
     "(compare two options, sequence events, predict an outcome, commit to one "
-    "choice, or state a decision rule) without you defining terms or naming "
-    "the answer API."
+    "choice, or state a decision rule) without you defining terms or giving away "
+    "the specific technical term, formula, or mechanism being asked about. "
+    "Not yet seen concepts in the mastery profile are listed for context only — "
+    "do not reference them by name in your question."
 )
+
+
+def _timed_invoke(chain, payload: dict, *, chain_name: str, session_id: str, turn_idx: int) -> object:
+    """Invoke a LangChain chain, log latency + outcome to llm_calls table.
+
+    Always re-raises the original exception — logging is best-effort and must
+    never silently swallow errors that the caller needs to handle.
+    """
+    model_name = getattr(getattr(chain, "first", None), "model_name", None) or "unknown"
+    # For composed chains (RunnableSequence), walk .steps to find the LLM
+    if model_name == "unknown":
+        for step in getattr(chain, "steps", []):
+            m = getattr(step, "model_name", None)
+            if m:
+                model_name = m
+                break
+
+    t0 = time.monotonic()
+    error: str | None = None
+    success = True
+    result = None
+    try:
+        result = chain.invoke(payload)
+        return result
+    except Exception as exc:
+        success = False
+        error = type(exc).__name__
+        raise
+    finally:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        try:
+            with queries.get_connection() as _log_conn:
+                queries.log_llm_call(
+                    _log_conn,
+                    chain=chain_name,
+                    model=model_name,
+                    session_id=session_id,
+                    turn_idx=turn_idx,
+                    latency_ms=latency_ms,
+                    success=success,
+                    error=error,
+                )
+        except Exception:  # noqa: BLE001  — logging must never crash the session
+            pass
 
 
 def _concept_scope_from_list(
@@ -97,8 +149,8 @@ def _get_checkpointer_pool():
         from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
         _checkpointer_pool = ConnectionPool(
             db_url,
-            min_size=1,
-            max_size=5,
+            min_size=2,
+            max_size=20,  # was 5 — each concurrent session holds a connection during LLM call
             # autocommit + no prepared statements: required for Supabase
             # Transaction Pooler (PgBouncer transaction mode).
             kwargs={"autocommit": True, "prepare_threshold": None},
@@ -160,6 +212,24 @@ def get_checkpointer():
 
 
 # ---------------------------------------------------------------------------
+# Evaluator chain singleton — built once at process startup, shared across
+# all requests.  Building ChatOpenAI is cheap but needlessly re-runs on every
+# graph.invoke() call (once per GET /sessions/:id and POST /turn) when the
+# instance is stateless and safe to share across threads.
+# ---------------------------------------------------------------------------
+
+_evaluator_chain = None
+
+
+def _get_evaluator_chain():
+    """Return the shared evaluator chain, building it on first call."""
+    global _evaluator_chain
+    if _evaluator_chain is None:
+        _evaluator_chain = build_evaluator_chain()
+    return _evaluator_chain
+
+
+# ---------------------------------------------------------------------------
 # Graph builder — nodes own their own short-lived DB connections
 # ---------------------------------------------------------------------------
 
@@ -168,12 +238,12 @@ def build_quest_graph(checkpointer):
 
     Each graph node opens its OWN connection from the shared app pool for the
     brief SQL it needs (ms-level reads/writes), then releases it immediately.
-    No connection is held during Claude API calls, so the pool is never
+    No connection is held during LLM API calls, so the pool is never
     saturated by slow LLM latency.
 
     Returns a compiled graph. Use thread_id = session_id in config.
     """
-    evaluator = build_evaluator_chain()
+    evaluator = _get_evaluator_chain()  # singleton — safe to share across threads
 
     def pick_concept(state: QuestState) -> dict:
         """Select the next due, unmastered concept with satisfied prerequisites."""
@@ -231,23 +301,63 @@ def build_quest_graph(checkpointer):
             )
             if scope:
                 steer += f" Probe scope (shape the question; do not quote verbatim): {scope}"
-            # Brief read — connection held for ms, released before Claude call
+            # Brief read — connection held for ms, released before LLM call
             with queries.get_connection() as conn:
-                prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=2)
+                prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=5)
+                mastery_rows = queries.get_mastery_for_user(conn, user_id, topic=topic_id)
             if prior:
                 snippets = " | ".join(s[:280] for s in prior)
                 steer += (
                     " Prior sessions on this topic (vary your angle; do not repeat): "
                     f"{snippets}"
                 )
+            # Inject structured mastery profile so the tutor knows exactly which
+            # concepts the student has attempted, how well, and what's untouched.
+            # Format: "score/5 ×evals" — compact enough to not bloat the steer.
+            if mastery_rows:
+                # Concepts in state order (YAML DAG order) for readability
+                concept_order = {c["id"]: i for i, c in enumerate(state.get("concept_list") or [])}
+                mastery_rows_sorted = sorted(
+                    mastery_rows,
+                    key=lambda r: concept_order.get(r.concept_id, 999),
+                )
+                seen = [
+                    f"{r.name}: {r.score_1_to_5:.1f}/5 ×{r.num_evaluations}"
+                    for r in mastery_rows_sorted
+                    if r.num_evaluations > 0
+                ]
+                seen_ids = {r.concept_id for r in mastery_rows if r.num_evaluations > 0}
+                unseen = [
+                    c["name"]
+                    for c in (state.get("concept_list") or [])
+                    if c["id"] not in seen_ids
+                ]
+                profile_parts = []
+                if seen:
+                    profile_parts.append("Seen: " + ", ".join(seen))
+                if unseen:
+                    profile_parts.append("Not yet seen: " + ", ".join(unseen))
+                if profile_parts:
+                    steer += (
+                        " Student mastery profile (use to vary depth and angle — "
+                        "do NOT directly quote scores to the student): "
+                        + " | ".join(profile_parts)
+                    )
             steer += "]"
             invoke_history = [HumanMessage(content=steer)]
         else:
             invoke_history = persisted
 
-        # Claude API call — NO database connection held during this
+        # LLM call — NO database connection held during this
+        turn_idx = state.get("turn_idx", 0)
         chain = build_socratic_chain(topic=topic_id)
-        response = chain.invoke({"history": invoke_history})
+        response = _timed_invoke(
+            chain,
+            {"history": invoke_history},
+            chain_name="tutor",
+            session_id=state["session_id"],
+            turn_idx=turn_idx,
+        )
         tutor_text = message_content(response)
 
         if turn_count == 0:
@@ -255,7 +365,6 @@ def build_quest_graph(checkpointer):
         else:
             new_history = persisted + [AIMessage(content=tutor_text)]
 
-        turn_idx = state.get("turn_idx", 0)
         # Brief write — new connection, released immediately after
         with queries.get_connection() as conn:
             queries.record_turn(conn, state["session_id"], turn_idx, "tutor", tutor_text)
@@ -282,9 +391,15 @@ def build_quest_graph(checkpointer):
             history=state.get("history"),
             mode=get_eval_mode(),
         )
-        # Claude evaluator call — NO database connection held during this
-        evaluation: EvaluatorOutput = evaluator.invoke(payload)
+        # LLM evaluator call — NO database connection held during this
         turn_idx = state.get("turn_idx", 0)
+        evaluation: EvaluatorOutput = _timed_invoke(
+            evaluator,
+            payload,
+            chain_name="evaluator",
+            session_id=state["session_id"],
+            turn_idx=turn_idx,
+        )
         concept_id = state.get("current_concept_id") or evaluation.inferred_concept_id
         # Brief write
         with queries.get_connection() as conn:
@@ -324,14 +439,25 @@ def build_quest_graph(checkpointer):
                     state["topic_id"],
                     EvaluatorOutput.model_validate(raw),
                     current_concept_id=state.get("current_concept_id"),
+                    concept_list=state.get("concept_list"),  # validate inferred IDs
                 )
         return {"concept_turn_count": state.get("concept_turn_count", 0) + 1}
 
     def decide(state: QuestState) -> dict:
-        """Set routing flags after an evaluated turn."""
+        """Set routing flags after an evaluated turn.
+
+        Advances to the next concept when the student has demonstrated mastery
+        (score >= 4, turns >= 3) OR when the hard cap is reached (turns >= 8).
+        The hard cap prevents students from being permanently stuck if the
+        evaluator is miscalibrated or a concept is genuinely too hard this session.
+        """
         score = state.get("last_score") or 0
         turns = state.get("concept_turn_count", 0)
-        if score >= CONCEPT_MASTERED_MIN_SCORE and turns >= CONCEPT_MASTERED_MIN_TURNS:
+
+        mastered = score >= CONCEPT_MASTERED_MIN_SCORE and turns >= CONCEPT_MASTERED_MIN_TURNS
+        capped = turns >= CONCEPT_MAX_TURNS  # safety valve — advance regardless
+
+        if mastered or capped:
             patch: dict = {"advance_concept": True}
             if state.get("replay_mode"):
                 cid = state.get("current_concept_id")

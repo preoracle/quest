@@ -16,7 +16,7 @@ import { ContentTrack } from "@/components/ContentColumn";
 import { SessionCompletePanel } from "@/components/SessionCompletePanel";
 import { SessionPanel } from "@/components/SessionPanel";
 import { SessionWorkspace } from "@/components/SessionWorkspace";
-import { Skeleton } from "@/components/Skeleton";
+import { SessionPageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { gutterPx } from "@/lib/layout";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,7 @@ export function SessionPage() {
   const [submitCount, setSubmitCount] = useState(0);
 
   // Cycle state
+  const [isFreshSession, setIsFreshSession] = useState(false);
   const [completedCycles, setCompletedCycles] = useState<CompletedCycle[]>([]);
   const [activeConceptName, setActiveConceptName] = useState<string | null>(null);
   const [activeExchanges, setActiveExchanges] = useState<CycleExchange[]>([]);
@@ -69,6 +70,10 @@ export function SessionPage() {
       } else {
         setActiveSession(null);
       }
+
+      // Track whether this is a brand-new session (no prior turns, no question yet)
+      // so the loading skeleton shows the right message.
+      setIsFreshSession(turns.length === 0 && !view.tutor_message);
 
       // If there are prior turns (resumed session), bundle them as one chip
       if (turns.length > 0) {
@@ -257,13 +262,8 @@ export function SessionPage() {
     >
       {loading && (
         <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", gutterPx, "py-page")}>
-          <ContentTrack tier="reading" className="flex flex-col gap-section">
-            <Skeleton className="h-24 w-full rounded-2xl" />
-            <Skeleton className="h-16 w-full rounded-xl" />
-            <div className="flex items-center gap-2 text-xs text-on-muted/50">
-              <span className="size-3 animate-spin rounded-full border border-line border-t-accent" />
-              Generating your first question…
-            </div>
+          <ContentTrack tier="reading">
+            <SessionPageSkeleton isFresh={isFreshSession} />
           </ContentTrack>
         </div>
       )}
@@ -318,6 +318,7 @@ export function SessionPage() {
               currentQuestion={
                 session.waiting_for_answer ? session.tutor_message : null
               }
+              submitting={submitting}
               error={error}
             />
           }

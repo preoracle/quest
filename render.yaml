@@ -1,0 +1,125 @@
+# render.yaml — Render "Infrastructure as Code" for Quest
+#
+# Deploys three services:
+#   quest-api       — FastAPI backend (public web service)
+#   quest-frontend  — React/Vite frontend (static site)
+#   freellmapi      — LLM proxy (private web service — no public URL)
+#
+# HOW TO DEPLOY:
+#   1. Push this repo to GitHub
+#   2. Go to https://render.com → New → Blueprint → point at this repo
+#   3. Render reads render.yaml and wires everything up automatically
+#   4. Fill in the required env vars marked with `generateValue: false`
+#      in the Render dashboard after the initial deploy
+#
+# REQUIRED ENV VARS (set in Render dashboard after deploy):
+#   quest-api:
+#     DATABASE_URL        — Supabase Transaction Pooler URL (port 6543)
+#     SUPABASE_URL        — https://xxxx.supabase.co
+#     LLM_API_KEY         — freellmapi auth token (from freellmapi admin dashboard)
+#     CORS_ORIGINS        — https://quest-ai.vercel.app  (your frontend URL)
+#   quest-frontend:
+#     VITE_SUPABASE_URL      — https://xxxx.supabase.co
+#     VITE_SUPABASE_ANON_KEY — eyJ...  (from Supabase dashboard > Settings > API)
+#   freellmapi (at least one provider key required):
+#     GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, SAMBANOVA_API_KEY
+#
+# OPTIONAL:
+#   CORS_ORIGIN_REGEX   — regex to allow Vercel preview URLs
+#   LLM_MODEL / LLM_EVAL_MODEL / LLM_SUMMARIZER_MODEL / LLM_TOPIC_MODEL
+#     leave as "auto" to let freellmapi route to best available provider
+
+services:
+  # ── freellmapi — Private LLM proxy ──────────────────────────────────────────
+  - type: web
+    name: freellmapi
+    runtime: node
+    repo: https://github.com/tashfeenahmed/freellmapi  # public repo — no auth needed
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # PRIVATE — no public URL. quest-api reaches it via Render's internal networking.
+    plan: free
+    envVars:
+      - key: PORT
+        value: "3001"
+      # Provider keys — fill at least one in the Render dashboard.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: SAMBANOVA_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+
+  # ── Quest Backend API ────────────────────────────────────────────────────────
+  - type: web
+    name: quest-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # LLM proxy — Render internal URL for the freellmapi private service
+      - key: LLM_BASE_URL
+        fromService:
+          name: freellmapi
+          type: web
+          property: hostport
+          # Render resolves internal service URLs automatically.
+          # The value becomes http://freellmapi:3001 (internal Render network).
+      - key: LLM_API_KEY
+        sync: false          # set in dashboard: your freellmapi admin token
+      - key: LLM_MODEL
+        value: auto
+      - key: LLM_EVAL_MODEL
+        value: auto
+      - key: LLM_SUMMARIZER_MODEL
+        value: auto
+      - key: LLM_TOPIC_MODEL
+        value: auto
+      # Database
+      - key: DATABASE_URL
+        sync: false          # Supabase transaction pooler URL (port 6543)
+      # Auth
+      - key: SUPABASE_URL
+        sync: false          # https://xxxx.supabase.co
+      # CORS — set to your frontend URL after deploy
+      - key: CORS_ORIGINS
+        sync: false          # e.g. https://quest-ai.vercel.app
+      - key: CORS_ORIGIN_REGEX
+        value: ""
+
+  # ── Quest Frontend (static site) ────────────────────────────────────────────
+  - type: web
+    name: quest-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    plan: free
+    routes:
+      # SPA fallback — all paths → index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # Cache hashed assets forever; bust index.html on every deploy
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false          # https://xxxx.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false          # eyJ...
+      - key: VITE_API_URL
+        fromService:
+          name: quest-api
+          type: web
+          property: host     # Render fills in https://quest-api.onrender.com

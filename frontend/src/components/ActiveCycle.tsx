@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/MessageContent";
+import { EvaluatingSkeleton } from "@/components/Skeleton";
 import type { CycleExchange } from "@/lib/cycles";
 
 function Exchange({ exchange }: { exchange: CycleExchange }) {
@@ -41,11 +42,13 @@ export function ActiveCycle({
   conceptName,
   exchanges,
   currentQuestion,
+  submitting = false,
   error,
 }: {
   conceptName: string | null;
   exchanges: CycleExchange[];
   currentQuestion: string | null;
+  submitting?: boolean;
   error?: string | null;
 }) {
   const hasCurrentQuestion = !!currentQuestion;
@@ -90,6 +93,13 @@ export function ActiveCycle({
             text={currentQuestion}
             className="text-[16px] leading-[1.75] text-on-surface"
           />
+        </div>
+      )}
+
+      {/* Evaluating state — shown while waiting for score + next question */}
+      {submitting && (
+        <div className="mt-5">
+          <EvaluatingSkeleton />
         </div>
       )}
 

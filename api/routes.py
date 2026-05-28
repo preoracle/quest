@@ -7,6 +7,7 @@ import os
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 
 from api.schemas import (
     BaselineAnswerRequest,
@@ -411,17 +412,25 @@ def create_session(
 def read_session(session_id: str, current_user: str = Depends(get_uid)) -> SessionView:
     """Return current session state from the graph checkpointer."""
     try:
-        # Brief ownership check — conn held for ms, released before Claude call
+        # Brief ownership check — conn held for ms, released before LLM call
         with queries.get_connection() as conn:
             row = queries.get_session(conn, session_id)
             if row is None:
                 raise HTTPException(status_code=404, detail="Session not found")
             if current_user != "default" and row.get("user_id") != current_user:
                 raise HTTPException(status_code=403, detail="Not your session")
-        # conn released — get_session_view manages its own connections around Claude
+        # conn released — get_session_view manages its own connections around LLM
         return get_session_view(session_id)
     except HTTPException:
         raise
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=502, detail="LLM backend authentication failed — check LLM_API_KEY") from exc
+    except RateLimitError as exc:
+        raise HTTPException(status_code=503, detail="LLM backend rate limit reached — retry shortly") from exc
+    except APIConnectionError as exc:
+        raise HTTPException(status_code=503, detail="LLM backend unreachable — check LLM_BASE_URL") from exc
+    except APIStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM backend error {exc.status_code}: {exc.message}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -430,23 +439,36 @@ def read_session(session_id: str, current_user: str = Depends(get_uid)) -> Sessi
 def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
     """Submit an answer; returns evaluator output and the next question (or completion)."""
     try:
-        # submit_turn manages its own connections — no conn held during Claude calls
+        # submit_turn manages its own connections — no conn held during LLM calls
         return submit_turn(session_id, body.answer)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=502, detail="LLM backend authentication failed — check LLM_API_KEY") from exc
+    except RateLimitError as exc:
+        raise HTTPException(status_code=503, detail="LLM backend rate limit reached — retry shortly") from exc
+    except APIConnectionError as exc:
+        raise HTTPException(status_code=503, detail="LLM backend unreachable — check LLM_BASE_URL") from exc
+    except APIStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM backend error {exc.status_code}: {exc.message}") from exc
     except ValueError as exc:
         msg = str(exc)
         if "Unknown session" in msg:
             raise HTTPException(status_code=404, detail=msg) from exc
         if "already ended" in msg or "not waiting" in msg:
             raise HTTPException(status_code=409, detail=msg) from exc
+        if "Rate limit" in msg:
+            raise HTTPException(status_code=429, detail=msg) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
 @router.post("/sessions/{session_id}/finish", response_model=SessionView)
 def finish_session_route(session_id: str) -> SessionView:
     """End a session early and generate its report."""
+    from pydantic import ValidationError  # noqa: PLC0415
     try:
         with queries.get_connection() as conn:
             return finish_session(conn, session_id)
+    except ValidationError:
+        raise  # let FastAPI return 500 with the real error — not a 404
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

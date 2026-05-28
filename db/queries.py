@@ -82,6 +82,32 @@ def _migrate_schema(conn) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_user_topics_user ON user_topics(user_id)"
         )
+    if "llm_calls" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE llm_calls (
+              id            INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+              turn_idx      INTEGER,
+              chain         TEXT NOT NULL,
+              model         TEXT NOT NULL,
+              latency_ms    INTEGER,
+              input_tokens  INTEGER,
+              output_tokens INTEGER,
+              retries       INTEGER NOT NULL DEFAULT 0,
+              success       INTEGER NOT NULL DEFAULT 1,
+              error         TEXT,
+              created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_llm_calls_chain_created "
+            "ON llm_calls(chain, created_at)"
+        )
 
 
 def init_db(db_path: Path | str | None = None) -> Path | None:
@@ -238,6 +264,32 @@ def get_session(conn: sqlite3.Connection, session_id: str) -> dict | None:
         (session_id,),
     ).fetchone()
     return dict(row) if row else None
+
+
+def count_user_turns_last_hour(conn, user_id: str) -> int:
+    """Count student (role='user') turns submitted in the past hour for rate limiting.
+
+    Counts across all sessions for this user.  Used to enforce the 60 turns/hour
+    per-user cap — prevents automated scoring attacks while being far above any
+    realistic human session rate (~6 turns/session × 2 sessions/hour = 12 turns).
+    """
+    # SQLite uses datetime() expressions; Postgres uses interval arithmetic.
+    if getattr(conn, "db_type", "sqlite") == "postgres":
+        since_expr = "NOW() - INTERVAL '1 hour'"
+    else:
+        since_expr = "datetime('now', '-1 hour')"
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS n
+        FROM turns t
+        JOIN sessions s ON s.id = t.session_id
+        WHERE s.user_id = ?
+          AND t.role = 'user'
+          AND t.created_at >= {since_expr}
+        """,
+        (user_id,),
+    ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def record_turn(
@@ -530,6 +582,41 @@ def set_session_report(
     conn.execute(
         "UPDATE sessions SET report_json = ? WHERE id = ?",
         (report_json, session_id),
+    )
+    conn.commit()
+
+
+def log_llm_call(
+    conn,
+    *,
+    chain: str,
+    model: str,
+    session_id: str | None = None,
+    turn_idx: int | None = None,
+    latency_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    retries: int = 0,
+    success: bool = True,
+    error: str | None = None,
+) -> None:
+    """Insert one LLM call log row.
+
+    Best-effort: callers should swallow exceptions so a logging failure never
+    interrupts a live session.  All fields except chain and model are optional.
+    """
+    conn.execute(
+        """
+        INSERT INTO llm_calls
+          (session_id, turn_idx, chain, model, latency_ms,
+           input_tokens, output_tokens, retries, success, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session_id, turn_idx, chain, model, latency_ms,
+            input_tokens, output_tokens, retries,
+            bool(success), error,  # Postgres BOOLEAN requires bool, not int
+        ),
     )
     conn.commit()
 

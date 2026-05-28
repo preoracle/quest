@@ -1,21 +1,60 @@
 services:
+  # ── freellmapi — LLM proxy (OpenAI-compatible) ──────────────────────────────
+  # Aggregates Groq, Cerebras, Gemini, SambaNova, Mistral and more at zero cost.
+  # Backend API routes all LLM calls here; provider keys never leave this service.
+  # In production on Render: deploy as a Private Service so it has no public URL.
+  freellmapi:
+    image: node:22-alpine
+    working_dir: /freellmapi
+    # freellmapi repo cloned as a sibling: ../freellmapi
+    # Swap for a Dockerfile.freellmapi build if you add it as a git submodule.
+    volumes:
+      - ../freellmapi:/freellmapi:ro
+    command: sh -c "npm ci --silent && npm run build --silent && npm start"
+    ports:
+      - "3001:3001"      # expose locally for testing; omit in production
+    environment:
+      PORT: 3001
+      # Provider API keys — add whichever you have; freellmapi skips missing ones.
+      GROQ_API_KEY:         ${GROQ_API_KEY:-}
+      GEMINI_API_KEY:       ${GEMINI_API_KEY:-}
+      CEREBRAS_API_KEY:     ${CEREBRAS_API_KEY:-}
+      SAMBANOVA_API_KEY:    ${SAMBANOVA_API_KEY:-}
+      MISTRAL_API_KEY:      ${MISTRAL_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   # ── Backend API ─────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     ports:
-      - "8000:8000"        # exposed for direct testing; remove in pure-proxy setups
+      - "8000:8000"
     environment:
-      # Required
-      DATABASE_URL:        ${DATABASE_URL}
-      ANTHROPIC_API_KEY:   ${ANTHROPIC_API_KEY}
-      # Auth — Supabase JWT verification
-      SUPABASE_URL:        ${SUPABASE_URL}
-      # Comma-separated list of allowed CORS origins (from .env in prod-like tests)
-      CORS_ORIGINS:        ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      CORS_ORIGIN_REGEX:   ${CORS_ORIGIN_REGEX:-}
+      # LLM proxy — internal service URL (Docker network resolves "freellmapi")
+      LLM_BASE_URL:         http://freellmapi:3001/v1
+      LLM_API_KEY:          ${LLM_API_KEY:-freellmapi-dev}
+      LLM_MODEL:            ${LLM_MODEL:-auto}
+      LLM_EVAL_MODEL:       ${LLM_EVAL_MODEL:-auto}
+      LLM_SUMMARIZER_MODEL: ${LLM_SUMMARIZER_MODEL:-auto}
+      LLM_TOPIC_MODEL:      ${LLM_TOPIC_MODEL:-auto}
+      # Database
+      DATABASE_URL:         ${DATABASE_URL}
+      # Auth — Supabase JWT/JWKS verification
+      SUPABASE_URL:         ${SUPABASE_URL}
+      # CORS — comma-separated frontend origins
+      CORS_ORIGINS:         ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGIN_REGEX:    ${CORS_ORIGIN_REGEX:-}
     restart: unless-stopped
+    depends_on:
+      freellmapi:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -29,8 +68,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # Build-time env vars baked into the JS bundle.
-        # VITE_API_URL defaults to /api (proxied by nginx — no override needed).
+        # Build-time env vars baked into the JS bundle at docker build time.
+        # VITE_API_URL is intentionally unset — nginx proxies /api → api:8000.
         VITE_SUPABASE_URL:      ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     ports:

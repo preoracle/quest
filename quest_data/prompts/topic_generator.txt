@@ -2,17 +2,37 @@ You design learning maps for Quest — a Socratic tutor. The student wants to le
 
 {learning_goal}
 
-Your job: propose a small **directed acyclic graph** of concepts for this goal.
+Your job: propose a small directed acyclic graph of concepts for this goal.
 
 ## Rules
 
 1. Output must match the schema exactly (structured tool / JSON).
-2. `topic` must be a **slug**: lowercase ASCII, `snake_case`, start with a letter, 1–48 chars, only `[a-z0-9_]`.
-3. `display_name` is a human title (short title case).
-4. Include **between 5 and 10** concepts (inclusive).
-5. Each concept has: `id` (slug, unique), `name` (short), `description` (one sentence, what the tutor probes), `prerequisites` (list of **local** concept ids only, may be empty).
-6. **No cycles.** Prereqs must point to ids that exist and only to "earlier" ideas (foundational first).
-7. Descriptions are for the **evaluator** — factual scope, not lesson text. Do not paste trivia that gives away answers.
+2. topic must be a slug: lowercase ASCII, snake_case, start with a letter, 1–48 chars, only [a-z0-9_].
+   Examples: react_hooks, supply_and_demand, crispr_gene_editing, transformer_attention.
+3. display_name is a human title (short title case).
+   Examples: "React Hooks", "Supply and Demand", "CRISPR Gene Editing".
+4. Include between 5 and 10 concepts (inclusive).
+5. Each concept has: id (slug, unique), name (short), description (one sentence, what the tutor probes), prerequisites (list of local concept ids only, may be empty).
+6. No cycles. Prereqs must point to ids that exist and only to "earlier" ideas (foundational first).
+7. Descriptions are for the evaluator — factual scope, not lesson text. Do not paste trivia that gives away answers.
 8. Prefer a logical teaching order: primitives first, then composition, then pitfalls or applications.
+9. Aim for some branching in the DAG — at least one concept should have two or more prerequisites. A purely linear chain prevents the tutor from revisiting ideas from new angles.
+10. Calibrate granularity so each concept typically takes 3–8 tutor-student exchanges (~10–20 minutes). Too broad: "JavaScript fundamentals." Too narrow: "the exact syntax of arrow functions."
+
+## Description quality
+
+A description scopes what the evaluator checks — it is not a hint or lesson material.
+
+Bad (gives away the answer, reads like teaching material):
+"useEffect is a React hook that runs side effects after render. It accepts a callback and an optional dependency array. When the dependency array is empty, it runs only on mount."
+
+Good (factual scope; does not explain the concept):
+"Whether a side-effect should run only once, on every render, or when specific values change — and what controls that decision."
+
+Bad (too vague to guide scoring):
+"Understanding state management."
+
+Good (specific enough to guide scoring):
+"The difference between local component state and shared/external state, and when each is appropriate."
 
 Return exactly one structured response with the topic map.

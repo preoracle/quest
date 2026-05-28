@@ -35,7 +35,9 @@ class StartSessionRequest(BaseModel):
 class SubmitTurnRequest(BaseModel):
     """Body for POST /sessions/{session_id}/turn."""
 
-    answer: str = Field(..., min_length=1)
+    # 2000-char cap: prevents token-stuffing attacks and LLM context overflows.
+    # Real answers to Socratic questions are rarely >500 chars; 2000 is generous.
+    answer: str = Field(..., min_length=1, max_length=2000)
 
 
 class MasteryItem(BaseModel):
@@ -179,7 +181,7 @@ class StartBaselineRequest(BaseModel):
 
 
 class BaselineAnswerRequest(BaseModel):
-    answer: str = Field(..., min_length=1)
+    answer: str = Field(..., min_length=1, max_length=2000)
 
 
 class TurnItem(BaseModel):

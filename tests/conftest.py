@@ -16,16 +16,17 @@ from db import queries
 
 @pytest.fixture(scope="session", autouse=True)
 def _load_dotenv() -> None:
-    """Load `.env` so live tests can reach the Anthropic API."""
+    """Load `.env` so live tests can reach the LLM proxy (freellmapi)."""
     load_dotenv()
 
 
 @pytest.fixture(scope="session")
-def anthropic_api_key() -> str:
-    """Require ANTHROPIC_API_KEY for live tests; skip if missing."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key or not key.startswith("sk-ant-"):
-        pytest.skip("ANTHROPIC_API_KEY not set — skip live evaluator tests")
+def llm_api_key() -> str:
+    """Require LLM_API_KEY + LLM_BASE_URL for live tests; skip if missing."""
+    key = os.environ.get("LLM_API_KEY", "").strip()
+    base_url = os.environ.get("LLM_BASE_URL", "").strip()
+    if not key or not base_url:
+        pytest.skip("LLM_API_KEY / LLM_BASE_URL not set — skip live LLM tests")
     return key
 
 
