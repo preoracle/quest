@@ -69,48 +69,50 @@
     font-size="32"
     fill="#9494a8"
     letter-spacing="0.5"
-  >The AI tutor that asks questions, not answers.</text>
+  >Think in questions. Reinforce weak edges. Build durable understanding.</text>
 
   <!-- Divider line -->
   <rect x="80" y="430" width="480" height="1" fill="#2a2a36"/>
 
   <!-- Feature pills -->
   <g font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#9494a8">
-    <text x="80" y="472">Socratic method</text>
-    <text x="80" y="472" fill="#d4a853" dx="248">·</text>
-    <text x="80" y="472" dx="268">Spaced repetition</text>
-    <text x="80" y="472" fill="#d4a853" dx="538">·</text>
-    <text x="80" y="472" dx="558">Mastery tracking</text>
+    <text x="80" y="472">Focus runs</text>
+    <text x="80" y="472" fill="#d4a853" dx="138">·</text>
+    <text x="80" y="472" dx="158">Reinforcement queue</text>
+    <text x="80" y="472" fill="#d4a853" dx="394">·</text>
+    <text x="80" y="472" dx="414">Clear feedback</text>
   </g>
 
-  <!-- Right side — decorative score card -->
+  <!-- Right side — decorative focus card -->
   <g transform="translate(760, 140)">
     <!-- Card bg -->
     <rect width="360" height="340" rx="16" fill="#111118" stroke="#2a2a36" stroke-width="1.5"/>
     <!-- Card header -->
     <rect x="0" y="0" width="360" height="56" rx="16" fill="#18181f"/>
     <rect x="0" y="40" width="360" height="16" fill="#18181f"/>
-    <text x="24" y="36" font-family="system-ui, sans-serif" font-size="18" fill="#9494a8">Session · React Hooks</text>
-    <!-- Score bars -->
+    <text x="24" y="36" font-family="system-ui, sans-serif" font-size="18" fill="#9494a8">Current focus · Go Modules</text>
+    <!-- Progress rows -->
     <g transform="translate(24, 80)">
-      <text font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useState</text>
-      <rect x="0" y="24" width="312" height="6" rx="3" fill="#1f1f28"/>
-      <rect x="0" y="24" width="250" height="6" rx="3" fill="#5fd68a"/>
+      <text font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">mastered</text>
+      <text x="312" y="0" text-anchor="end" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">4/12</text>
+      <rect x="0" y="22" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="22" width="104" height="6" rx="3" fill="#d4a853"/>
 
-      <text y="60" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useEffect</text>
-      <rect x="0" y="84" width="312" height="6" rx="3" fill="#1f1f28"/>
-      <rect x="0" y="84" width="180" height="6" rx="3" fill="#d4a853"/>
+      <text y="58" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">avg score</text>
+      <text x="312" y="58" text-anchor="end" font-family="system-ui, sans-serif" font-size="15" fill="#d4a853">3.6/5</text>
+      <rect x="0" y="80" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="80" width="224" height="6" rx="3" fill="#5fd68a"/>
 
-      <text y="120" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">useCallback</text>
-      <rect x="0" y="144" width="312" height="6" rx="3" fill="#1f1f28"/>
-      <rect x="0" y="144" width="90" height="6" rx="3" fill="#f08080"/>
+      <text y="116" font-family="system-ui, sans-serif" font-size="15" fill="#9494a8">in queue</text>
+      <text x="312" y="116" text-anchor="end" font-family="system-ui, sans-serif" font-size="15" fill="#f08080">2</text>
+      <rect x="0" y="138" width="312" height="6" rx="3" fill="#1f1f28"/>
+      <rect x="0" y="138" width="84" height="6" rx="3" fill="#f08080"/>
     </g>
-    <!-- Tutor message bubble -->
-    <g transform="translate(24, 220)">
-      <rect width="312" height="80" rx="10" fill="#1f1f28"/>
-      <text x="16" y="28" font-family="system-ui, sans-serif" font-size="14" fill="#9494a8">Quest</text>
-      <text x="16" y="52" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">Why does useEffect run after</text>
-      <text x="16" y="70" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">every render by default?</text>
+    <!-- Next step bubble -->
+    <g transform="translate(24, 230)">
+      <rect width="312" height="70" rx="10" fill="#1f1f28"/>
+      <text x="16" y="28" font-family="system-ui, sans-serif" font-size="14" fill="#9494a8">Next step</text>
+      <text x="16" y="52" font-family="system-ui, sans-serif" font-size="15" fill="#f4f4f8">Clear one due concept now.</text>
     </g>
   </g>
 
