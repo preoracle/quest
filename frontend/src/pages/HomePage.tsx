@@ -65,6 +65,15 @@ export function HomePage() {
 
   useLenis(ready);
 
+  const scrollToHowItWorks = () => {
+    const el = document.getElementById("how-it-works");
+    if (!el) return;
+    const top =
+      window.scrollY + el.getBoundingClientRect().top - 96 /* nav offset */;
+    window.history.replaceState(null, "", "#how-it-works");
+    window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+  };
+
   useEffect(() => {
     if (!user) return;
     fetchDue()
@@ -166,10 +175,13 @@ export function HomePage() {
                         size="lg"
                         className="gap-2"
                       />
-                      <Button asChild variant="ghost" size="lg">
-                        <Link to="#how-it-works" className="text-on-muted">
-                          See how it works
-                        </Link>
+                      <Button
+                        variant="ghost"
+                        size="lg"
+                        className="text-on-muted"
+                        onClick={scrollToHowItWorks}
+                      >
+                        See how it works
                       </Button>
                     </>
                   )}
