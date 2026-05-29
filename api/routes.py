@@ -9,6 +9,8 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 
+from core.llm_errors import raise_llm_http_error
+
 from api.schemas import (
     BaselineAnswerRequest,
     ConceptSearchHit,
@@ -324,8 +326,10 @@ def generate_topic(body: GenerateTopicRequest) -> TopicCreatedResponse:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise_llm_http_error(exc)
     with queries.get_connection() as conn:
         mark_topic_user_created(conn, data["topic"])
     return TopicCreatedResponse(
@@ -373,6 +377,10 @@ def create_baseline(
             return start_baseline(conn, current_user, body.topic)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
 
 
 @router.post("/baseline/{session_id}/answer", response_model=BaselineView)
@@ -385,6 +393,10 @@ def post_baseline_answer(session_id: str, body: BaselineAnswerRequest) -> Baseli
         msg = str(exc)
         code = 404 if "Unknown" in msg else 409 if "already" in msg else 400
         raise HTTPException(status_code=code, detail=msg) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
 
 
 @router.post("/sessions", response_model=SessionView)
@@ -423,32 +435,19 @@ def read_session(session_id: str, current_user: str = Depends(get_uid)) -> Sessi
         return get_session_view(session_id)
     except HTTPException:
         raise
-    except AuthenticationError as exc:
-        raise HTTPException(status_code=502, detail="LLM backend authentication failed — check LLM_API_KEY") from exc
-    except RateLimitError as exc:
-        raise HTTPException(status_code=503, detail="LLM backend rate limit reached — retry shortly") from exc
-    except APIConnectionError as exc:
-        raise HTTPException(status_code=503, detail="LLM backend unreachable — check LLM_BASE_URL") from exc
-    except APIStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"LLM backend error {exc.status_code}: {exc.message}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
 
 
 @router.post("/sessions/{session_id}/turn", response_model=SessionView)
 def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
     """Submit an answer; returns evaluator output and the next question (or completion)."""
     try:
-        # submit_turn manages its own connections — no conn held during LLM calls
         return submit_turn(session_id, body.answer)
-    except AuthenticationError as exc:
-        raise HTTPException(status_code=502, detail="LLM backend authentication failed — check LLM_API_KEY") from exc
-    except RateLimitError as exc:
-        raise HTTPException(status_code=503, detail="LLM backend rate limit reached — retry shortly") from exc
-    except APIConnectionError as exc:
-        raise HTTPException(status_code=503, detail="LLM backend unreachable — check LLM_BASE_URL") from exc
-    except APIStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"LLM backend error {exc.status_code}: {exc.message}") from exc
     except ValueError as exc:
         msg = str(exc)
         if "Unknown session" in msg:
@@ -458,6 +457,10 @@ def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
         if "Rate limit" in msg:
             raise HTTPException(status_code=429, detail=msg) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
 
 
 @router.post("/sessions/{session_id}/finish", response_model=SessionView)
@@ -471,6 +474,10 @@ def finish_session_route(session_id: str) -> SessionView:
         raise  # let FastAPI return 500 with the real error — not a 404
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
 
 
 @router.get("/sessions/{session_id}/turns", response_model=list[TurnItem])

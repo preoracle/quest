@@ -924,8 +924,16 @@ def upsert_topic_metadata(
         uc = int(user_created)
 
     now = _utc_now()
+    # SQLite allows scalar MAX(a,b); Postgres needs GREATEST or CASE — use CASE for both.
+    uc_merge = """
+        CASE
+            WHEN topic_metadata.user_created > excluded.user_created
+            THEN topic_metadata.user_created
+            ELSE excluded.user_created
+        END
+    """
     conn.execute(
-        """
+        f"""
         INSERT INTO topic_metadata (
             topic_id, archived_at, pinned_at, tags_json, user_created, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?)
@@ -933,7 +941,7 @@ def upsert_topic_metadata(
             archived_at = excluded.archived_at,
             pinned_at = excluded.pinned_at,
             tags_json = excluded.tags_json,
-            user_created = MAX(topic_metadata.user_created, excluded.user_created),
+            user_created = {uc_merge},
             updated_at = excluded.updated_at
         """,
         (topic_id, archived_at, pinned_at, tags_json, uc, now),

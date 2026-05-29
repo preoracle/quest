@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import yaml
 
 from core.chains import build_topic_generator_chain
+from core.llm_client import MODEL_CHAIN_TOPIC, llm_base_url, resolve_model
 from core.paths import user_concepts_dir
 from core.topic_validate import validate_topic_payload
+
+log = logging.getLogger(__name__)
 
 
 def generate_topic_payload(learning_goal: str) -> dict:
     """Call the LLM and return a validated topic dict (ready for YAML)."""
     chain = build_topic_generator_chain()
+    log.info(
+        "topic_generator model=%s base_url=%s",
+        resolve_model(*MODEL_CHAIN_TOPIC),
+        llm_base_url(),
+    )
     result = chain.invoke({"learning_goal": learning_goal.strip()})
     data = result.model_dump()
     validate_topic_payload(data)

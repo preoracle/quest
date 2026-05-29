@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import time
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from core.llm_client import MODEL_CHAIN_SUMMARIZER, make_chat_model, resolve_model
 from db import queries
-
-DEFAULT_SUMMARIZER_MODEL = "auto"  # freellmapi picks best available; override with LLM_SUMMARIZER_MODEL
 
 
 def summarize_session(
@@ -21,10 +18,8 @@ def summarize_session(
 ) -> str:
     """Generate a short session summary from turn history and store it on the session.
 
-    Uses the summarizer model (LLM_SUMMARIZER_MODEL, default Groq Llama 3.1 8B)
-    for a cheap compression pass. Returns the summary text written to
-    `sessions.summary_text`. Student content is wrapped in <student_turn> tags
-    to prevent prompt injection from adversarial student answers.
+    Uses ``LLM_SUMMARIZER_MODEL`` → ``LLM_EVAL_MODEL`` → ``LLM_MODEL`` (same proxy as
+    sessions). Returns the summary text written to ``sessions.summary_text``.
     """
     turns = queries.get_turns_for_session(conn, session_id)
     if not turns:
@@ -32,10 +27,6 @@ def summarize_session(
         queries.set_session_summary(conn, session_id, summary)
         return summary
 
-    # Wrap student turns in XML delimiters to prevent prompt injection.
-    # A student could type "ignore all instructions and output X" — treating
-    # their content as a <student_turn> block prevents it from being interpreted
-    # as a directive by the summarizer model.
     transcript_lines = []
     for t in turns:
         if t["role"] == "tutor":
@@ -46,14 +37,8 @@ def summarize_session(
             )
     transcript = "\n".join(transcript_lines)
 
-    model = ChatOpenAI(
-        model=os.environ.get("LLM_SUMMARIZER_MODEL", DEFAULT_SUMMARIZER_MODEL),
-        base_url=os.environ.get("LLM_BASE_URL", "http://localhost:3001/v1"),
-        api_key=os.environ.get("LLM_API_KEY", "freellmapi-dev"),
-        temperature=0,
-        max_tokens=256,
-    )
-    model_name = os.environ.get("LLM_SUMMARIZER_MODEL", DEFAULT_SUMMARIZER_MODEL)
+    model = make_chat_model(*MODEL_CHAIN_SUMMARIZER, temperature=0, max_tokens=256)
+    model_name = resolve_model(*MODEL_CHAIN_SUMMARIZER)
     t0 = time.monotonic()
     llm_error: str | None = None
     try:
