@@ -64,9 +64,9 @@ app.add_middleware(
 app.include_router(router)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict[str, str]:
-    """Liveness check."""
+    """Liveness check (HEAD for UptimeRobot / Render probes)."""
     return {"status": "ok"}
 
 

@@ -53,6 +53,7 @@ def mock_llm():
 
 def test_health(client):
     r = client.get("/health")
+    assert client.head("/health").status_code == 200
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
 
