@@ -10,6 +10,7 @@ import { DuePage } from "@/pages/DuePage";
 import { MasteryPage } from "@/pages/MasteryPage";
 import { SessionPage } from "@/pages/SessionPage";
 import { BaselinePage } from "@/pages/BaselinePage";
+import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
@@ -23,6 +24,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route
             path="/dashboard"

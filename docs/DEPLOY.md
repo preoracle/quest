@@ -51,7 +51,15 @@ docker compose up --build
 
 ### 1. Supabase — verify configuration
 
-- **Auth**: Supabase Auth is the identity provider. Users sign in via the Supabase frontend SDK. The backend verifies JWTs via the Supabase JWKS endpoint — no secret needed.
+- **Auth**: Supabase Auth is the identity provider. Users sign in via the Supabase frontend SDK (email/password or Google OAuth). The backend verifies JWTs via the Supabase JWKS endpoint — no secret needed.
+- **Google OAuth**:
+  1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → Create OAuth client ID (Web application).
+  2. **Authorized JavaScript origins**: your app URL(s), e.g. `http://localhost:5173`, `https://your-app.vercel.app`.
+  3. **Authorized redirect URI**: `https://YOURREF.supabase.co/auth/v1/callback` (copy from Supabase Dashboard → Authentication → Providers → Google).
+  4. Supabase Dashboard → Authentication → Providers → Google → enable, paste Client ID + Client Secret.
+  5. Supabase Dashboard → Authentication → URL Configuration → add redirect URLs:
+     - `http://localhost:5173/auth/callback` (local dev)
+     - `https://your-app.vercel.app/auth/callback` (production)
 - **Database**: Use the **Transaction Pooler** URL (port **6543**) for `DATABASE_URL`. PgBouncer transaction mode is required for psycopg3 compatibility.
   - Dashboard → Settings → Database → Connection pooling → Transaction mode → copy URI
   - Format: `postgresql://postgres.REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres`
