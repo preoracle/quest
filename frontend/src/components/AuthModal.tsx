@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { authCallbackUrl } from "@/lib/auth";
+import { hasGoogleClientId, signInWithGoogleIdToken } from "@/lib/googleAuth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -87,13 +88,16 @@ export function AuthModal({
   async function handleGoogleSignIn() {
     setGoogleLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: authCallbackUrl(),
-        },
-      });
-      if (error) throw error;
+      if (hasGoogleClientId()) {
+        await signInWithGoogleIdToken();
+        setOpen(false);
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: authCallbackUrl() },
+        });
+        if (error) throw error;
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Google sign in failed");
       setGoogleLoading(false);

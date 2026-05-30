@@ -8,43 +8,41 @@ export function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthError = params.get("error_description") ?? params.get("error");
-    if (oauthError) {
-      setError(oauthError);
-      return;
-    }
+    let cancelled = false;
 
-    let settled = false;
-    const finish = (ok: boolean, message?: string) => {
-      if (settled) return;
-      settled = true;
-      if (ok) {
+    async function handleCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const oauthError = params.get("error_description") ?? params.get("error");
+      if (oauthError) {
+        if (!cancelled) setError(oauthError);
+        return;
+      }
+
+      const code = params.get("code");
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (cancelled) return;
+        if (exchangeError) {
+          setError(exchangeError.message);
+          return;
+        }
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+
+      if (session) {
         navigate("/dashboard", { replace: true });
       } else {
-        setError(message ?? "Sign in failed. Please try again.");
+        setError("Sign in failed. Please try again.");
       }
-    };
+    }
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) {
-        finish(true);
-      }
-    });
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) finish(true);
-    });
-
-    const timeout = window.setTimeout(() => {
-      finish(false, "Sign in timed out. Please try again.");
-    }, 15000);
-
+    void handleCallback();
     return () => {
-      subscription.unsubscribe();
-      window.clearTimeout(timeout);
+      cancelled = true;
     };
   }, [navigate]);
 
