@@ -87,8 +87,22 @@ CREATE TABLE IF NOT EXISTS llm_calls (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS study_days (
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  study_date TEXT NOT NULL,
+  PRIMARY KEY (user_id, study_date)
+);
+
+CREATE TABLE IF NOT EXISTS user_style (
+  user_id      TEXT PRIMARY KEY REFERENCES users(id),
+  dominant_gap TEXT,
+  gap_counts   TEXT NOT NULL DEFAULT '{}',
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_idx);
 CREATE INDEX IF NOT EXISTS idx_mastery_user ON mastery(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_topics_user ON user_topics(user_id);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_chain_created ON llm_calls(chain, created_at);
+CREATE INDEX IF NOT EXISTS idx_study_days_user ON study_days(user_id, study_date DESC);

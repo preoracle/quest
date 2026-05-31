@@ -183,3 +183,16 @@ export function fetchDue(topic?: string): Promise<DueResponse> {
   const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
   return request<DueResponse>(`/users/me/due${q}`);
 }
+
+export interface StreakData {
+  streak: number;
+  dates: string[];
+}
+
+export function fetchStreak(): Promise<StreakData> {
+  return request<StreakData>("/me/streak");
+}
+
+export function postStudyDay(): Promise<StreakData> {
+  return request<StreakData>("/me/study-day", { method: "POST" });
+}

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowRight, BookOpen, CalendarCheck, Flame,
+  ArrowRight, BookOpen, CalendarCheck, Flame, Loader2, Plus, Send,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchDue, fetchTopics, startSession } from "@/api/client";
+import { fetchDue, fetchStreak, fetchTopics, generateTopic, postStudyDay, startSession } from "@/api/client";
 import { AppShell } from "@/components/AppShell";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import { MasteryTicks } from "@/components/MasteryTicks";
@@ -141,8 +141,9 @@ function getRecommendation(
 }
 
 /** Activity heatmap — 12 weeks of study history */
-function ActivityHeatmap({ fullWidth = false }: { fullWidth?: boolean }) {
-  const studyDates = useMemo(() => getStudyDates(), []);
+function ActivityHeatmap({ fullWidth = false, studyDates: serverDates }: { fullWidth?: boolean; studyDates?: Set<string> }) {
+  const localDates = useMemo(() => getStudyDates(), []);
+  const studyDates = serverDates ?? localDates;
   const today = new Date();
 
   // Build 84 days (12 weeks) going back from today
@@ -218,10 +219,50 @@ function ActivityHeatmap({ fullWidth = false }: { fullWidth?: boolean }) {
   );
 }
 
+const SUGGESTIONS = [
+  "How does TCP work?",
+  "React useEffect",
+  "Transformer architecture",
+  "SQL indexes",
+  "Public key cryptography",
+];
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const [starting, setStarting] = useState<string | null>(null);
-  const streak = getStudyStreak();
+  const [query, setQuery] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [showNewInput, setShowNewInput] = useState(false);
+  const newInputRef = useRef<HTMLInputElement>(null);
+  const localStreak = getStudyStreak();
+
+  const { data: streakData, refetch: refetchStreak } = useQuery({
+    queryKey: ["streak"],
+    queryFn: fetchStreak,
+    staleTime: 60_000,
+  });
+  const streak = streakData?.streak ?? localStreak;
+  const serverDates = useMemo(
+    () => streakData ? new Set(streakData.dates) : undefined,
+    [streakData],
+  );
+
+  async function handleQuickStart(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed || generating) return;
+    setGenerating(true);
+    try {
+      const { topic_id } = await generateTopic(trimmed);
+      recordTopicUse(topic_id);
+      recordStudyDay();
+      void postStudyDay().then(() => void refetchStreak());
+      const session = await startSession(topic_id, "resume");
+      navigate(`/session/${session.session_id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create topic — try rephrasing");
+      setGenerating(false);
+    }
+  }
 
   const { data: dueData } = useQuery({
     queryKey: ["due"],
@@ -290,6 +331,7 @@ export function DashboardPage() {
     setStarting(topicId);
     recordTopicUse(topicId);
     recordStudyDay();
+    void postStudyDay().then(() => void refetchStreak());
     try {
       let session = await startSession(topicId, mode);
       if (session.done && mode !== "replay") {
@@ -376,23 +418,110 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* ── Empty state ── */}
+          {/* ── Quick-start (empty state hero) ── */}
           {hasData && !hasActivity && (
-            <div className="flex flex-col items-center gap-4 rounded-2xl border border-line/40 bg-surface/20 px-5 py-10 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-accent/10">
-                <BookOpen className="size-6 text-accent" />
-              </div>
-              <div>
-                <p className="font-display text-lg font-semibold text-on-surface">
-                  Nothing in progress yet
+            <div className="rounded-2xl border border-line/40 bg-surface/20 px-6 py-8">
+              <div className="mx-auto max-w-lg">
+                <div className="mb-5 flex items-center gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/12">
+                    <BookOpen className="size-5 text-accent" />
+                  </span>
+                  <div>
+                    <p className="font-display text-lg font-semibold text-on-surface">
+                      What do you want to understand?
+                    </p>
+                    <p className="text-sm text-on-muted">
+                      Type any concept and Quest builds a study path instantly.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Input row */}
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => { e.preventDefault(); void handleQuickStart(query); }}
+                >
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder='e.g. "how TCP handshakes work"'
+                    disabled={generating}
+                    className={cn(
+                      "flex-1 rounded-xl border border-line/50 bg-surface/40 px-4 py-2.5 text-sm text-on-surface placeholder:text-on-muted/45",
+                      "outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors",
+                      "disabled:opacity-50",
+                    )}
+                  />
+                  <Button type="submit" disabled={!query.trim() || generating} className="shrink-0 gap-1.5">
+                    {generating ? (
+                      <><Loader2 className="size-4 animate-spin" /> Building…</>
+                    ) : (
+                      <><Send className="size-4" /> Study this</>
+                    )}
+                  </Button>
+                </form>
+
+                {/* Suggestion chips */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={generating}
+                      onClick={() => void handleQuickStart(s)}
+                      className="rounded-full border border-line/40 bg-surface/30 px-3 py-1 text-xs text-on-muted transition-colors hover:border-accent/30 hover:text-accent disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-5 text-center text-xs text-on-muted/50">
+                  or{" "}
+                  <Link to="/topics" className="text-on-muted/70 underline-offset-2 hover:text-accent hover:underline">
+                    browse the library
+                  </Link>
                 </p>
-                <p className="mt-1.5 max-w-xs text-sm text-on-muted">
-                  Pick a topic and Quest will track every concept — then resurface them just before you'd forget.
-                </p>
               </div>
-              <Button asChild>
-                <Link to="/topics">Open library <ArrowRight className="size-4" /></Link>
-              </Button>
+            </div>
+          )}
+
+          {/* ── Study something new (active users) ── */}
+          {hasActivity && (
+            <div className="flex items-center gap-2">
+              {showNewInput ? (
+                <form
+                  className="flex flex-1 gap-2"
+                  onSubmit={(e) => { e.preventDefault(); void handleQuickStart(query); }}
+                >
+                  <input
+                    ref={newInputRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="What do you want to understand?"
+                    disabled={generating}
+                    className={cn(
+                      "flex-1 rounded-xl border border-line/50 bg-surface/40 px-3.5 py-2 text-sm text-on-surface placeholder:text-on-muted/45",
+                      "outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors",
+                      "disabled:opacity-50",
+                    )}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === "Escape") { setShowNewInput(false); setQuery(""); } }}
+                  />
+                  <Button size="sm" type="submit" disabled={!query.trim() || generating} className="shrink-0">
+                    {generating ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                  </Button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setShowNewInput(true); setTimeout(() => newInputRef.current?.focus(), 50); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-dashed border-line/40 px-3 py-1.5 text-xs text-on-muted/60 transition-colors hover:border-accent/30 hover:text-accent"
+                >
+                  <Plus className="size-3.5" />
+                  Study something new
+                </button>
+              )}
             </div>
           )}
 
@@ -601,7 +730,7 @@ export function DashboardPage() {
 
                   {hasData && (
                     <div className="rounded-xl border border-line/35 bg-surface/15 p-3">
-                      <ActivityHeatmap fullWidth />
+                      <ActivityHeatmap fullWidth studyDates={serverDates} />
                     </div>
                   )}
                 </div>
@@ -612,7 +741,7 @@ export function DashboardPage() {
           {/* ── Activity Heatmap ── */}
           {hasData && !hasActivity && (
             <div className="w-full rounded-xl border border-line/35 bg-surface/15 p-3 sm:w-fit">
-              <ActivityHeatmap />
+              <ActivityHeatmap studyDates={serverDates} />
             </div>
           )}
 

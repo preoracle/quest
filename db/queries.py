@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta as _dt_timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,29 @@ def _migrate_schema(conn) -> None:
         conn.execute(
             "ALTER TABLE sessions ADD CONSTRAINT sessions_session_kind_check "
             "CHECK (session_kind IN ('study', 'baseline', 'replay'))"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_days (
+              user_id    TEXT NOT NULL REFERENCES users(id),
+              study_date TEXT NOT NULL,
+              PRIMARY KEY (user_id, study_date)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_study_days_user "
+            "ON study_days(user_id, study_date DESC)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_style (
+              user_id      TEXT PRIMARY KEY REFERENCES users(id),
+              dominant_gap TEXT,
+              gap_counts   TEXT NOT NULL DEFAULT '{}',
+              updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
         )
         conn.commit()
         return
@@ -124,6 +147,32 @@ def _migrate_schema(conn) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_llm_calls_chain_created "
             "ON llm_calls(chain, created_at)"
+        )
+    # SQLite: study_days + user_style (postgres handled in the early-return block above)
+    if "study_days" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE study_days (
+              user_id    TEXT NOT NULL REFERENCES users(id),
+              study_date TEXT NOT NULL,
+              PRIMARY KEY (user_id, study_date)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_study_days_user "
+            "ON study_days(user_id, study_date DESC)"
+        )
+    if "user_style" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE user_style (
+              user_id      TEXT PRIMARY KEY REFERENCES users(id),
+              dominant_gap TEXT,
+              gap_counts   TEXT NOT NULL DEFAULT '{}',
+              updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
         )
 
 
@@ -1147,3 +1196,131 @@ def update_turn_evaluation(
         ),
     )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Study-day streaks
+# ---------------------------------------------------------------------------
+
+def record_study_day(conn, user_id: str) -> None:
+    """Upsert today (UTC) into study_days. Safe to call multiple times."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if conn.db_type == "postgres":
+        conn.execute(
+            "INSERT INTO study_days(user_id, study_date) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (user_id, today),
+        )
+    else:
+        conn.execute(
+            "INSERT OR IGNORE INTO study_days(user_id, study_date) VALUES (?, ?)",
+            (user_id, today),
+        )
+    conn.commit()
+
+
+def get_streak_and_dates(conn, user_id: str, days: int = 84) -> dict:
+    """Return streak count and list of study date strings for the past `days` days."""
+    ph = "%s" if conn.db_type == "postgres" else "?"
+    rows = conn.execute(
+        f"SELECT study_date FROM study_days WHERE user_id = {ph} ORDER BY study_date DESC",
+        (user_id,),
+    ).fetchall()
+    date_set: set[str] = {r["study_date"] for r in rows}
+
+    # Streak: consecutive days ending today or yesterday
+    today = datetime.now(timezone.utc).date()
+    streak = 0
+    cursor = today
+    if today.isoformat() not in date_set:
+        cursor = today - _dt_timedelta(days=1)
+    while cursor.isoformat() in date_set:
+        streak += 1
+        cursor -= _dt_timedelta(days=1)
+
+    # Dates for heatmap
+    cutoff = (today - _dt_timedelta(days=days - 1)).isoformat()
+    recent_dates = sorted(d for d in date_set if d >= cutoff)
+
+    return {"streak": streak, "dates": recent_dates}
+
+
+# ---------------------------------------------------------------------------
+# User style memory
+# ---------------------------------------------------------------------------
+
+_GAP_LABELS: dict[str, str] = {
+    "linguistic_imprecision": "you reason correctly but tend to use informal vocabulary",
+    "missing_mechanism":      "you identify the right factors but tend to skip the causal chain",
+    "missing_abstraction":    "you trace mechanisms well but miss the formal framework",
+    "wrong_model":            "your causal model sometimes needs recalibration",
+}
+
+
+def compute_and_save_user_style(conn, user_id: str) -> str | None:
+    """Aggregate gap_type across all of a user's turns and persist the dominant pattern.
+
+    Returns the dominant_gap string, or None if insufficient data.
+    """
+    ph = "%s" if conn.db_type == "postgres" else "?"
+    rows = conn.execute(
+        f"""
+        SELECT t.evaluator_gap_type
+        FROM turns t
+        JOIN sessions s ON s.id = t.session_id
+        WHERE s.user_id = {ph}
+          AND t.evaluator_gap_type IS NOT NULL
+          AND t.evaluator_gap_type != 'none'
+        """,
+        (user_id,),
+    ).fetchall()
+
+    if not rows:
+        return None
+
+    counts: dict[str, int] = {}
+    for r in rows:
+        gt = r["evaluator_gap_type"]
+        counts[gt] = counts.get(gt, 0) + 1
+
+    dominant = max(counts, key=lambda k: counts[k])
+    counts_json = json.dumps(counts)
+    now = datetime.now(timezone.utc).isoformat()
+
+    if conn.db_type == "postgres":
+        conn.execute(
+            """
+            INSERT INTO user_style(user_id, dominant_gap, gap_counts, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE
+              SET dominant_gap = EXCLUDED.dominant_gap,
+                  gap_counts   = EXCLUDED.gap_counts,
+                  updated_at   = EXCLUDED.updated_at
+            """,
+            (user_id, dominant, counts_json, now),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO user_style(user_id, dominant_gap, gap_counts, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE
+              SET dominant_gap = excluded.dominant_gap,
+                  gap_counts   = excluded.gap_counts,
+                  updated_at   = excluded.updated_at
+            """,
+            (user_id, dominant, counts_json, now),
+        )
+    conn.commit()
+    return dominant
+
+
+def get_user_style(conn, user_id: str) -> str | None:
+    """Return a human-readable style note for the user, or None if not enough data."""
+    ph = "%s" if conn.db_type == "postgres" else "?"
+    row = conn.execute(
+        f"SELECT dominant_gap FROM user_style WHERE user_id = {ph}",
+        (user_id,),
+    ).fetchone()
+    if not row or not row["dominant_gap"]:
+        return None
+    return _GAP_LABELS.get(row["dominant_gap"])

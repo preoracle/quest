@@ -444,10 +444,17 @@ def read_session(session_id: str, current_user: str = Depends(get_uid)) -> Sessi
 
 
 @router.post("/sessions/{session_id}/turn", response_model=SessionView)
-def post_turn(session_id: str, body: SubmitTurnRequest) -> SessionView:
+def post_turn(
+    session_id: str,
+    body: SubmitTurnRequest,
+    current_user: str = Depends(get_uid),
+) -> SessionView:
     """Submit an answer; returns evaluator output and the next question (or completion)."""
     try:
-        return submit_turn(session_id, body.answer)
+        result = submit_turn(session_id, body.answer)
+        with queries.get_connection() as conn:
+            queries.record_study_day(conn, current_user)
+        return result
     except ValueError as exc:
         msg = str(exc)
         if "Unknown session" in msg:
@@ -557,6 +564,22 @@ def read_due(
             for r in rows
         ],
     )
+
+
+@router.post("/me/study-day", response_model=dict)
+def record_study_day_route(current_user: str = Depends(get_uid)) -> dict:
+    """Record today as a study day and return updated streak."""
+    with queries.get_connection() as conn:
+        queries.record_study_day(conn, current_user)
+        result = queries.get_streak_and_dates(conn, current_user, days=84)
+    return result
+
+
+@router.get("/me/streak", response_model=dict)
+def get_streak_route(current_user: str = Depends(get_uid)) -> dict:
+    """Return streak count and recent study dates (84 days)."""
+    with queries.get_connection() as conn:
+        return queries.get_streak_and_dates(conn, current_user, days=84)
 
 
 @router.get("/users/{user_id}/mastery", response_model=MasteryResponse)

@@ -354,6 +354,12 @@ def build_quest_graph(checkpointer):
             with queries.get_connection() as conn:
                 prior = queries.get_recent_summaries(conn, user_id, topic_id, limit=5)
                 mastery_rows = queries.get_mastery_for_user(conn, user_id, topic=topic_id)
+                style_note = queries.get_user_style(conn, user_id)
+            if style_note:
+                steer += (
+                    f" [Student pattern across all sessions: {style_note}."
+                    " Calibrate your question depth accordingly — but never state this observation aloud.]"
+                )
             if prior:
                 snippets = " | ".join(s[:280] for s in prior)
                 steer += (

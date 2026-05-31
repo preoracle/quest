@@ -139,6 +139,7 @@ def finish_session(conn: sqlite3.Connection, session_id: str) -> SessionView:
         display = row["topic"]
     report = build_session_report(conn, session_id, row["topic"], display)
     queries.set_session_report(conn, session_id, report.model_dump_json())
+    queries.compute_and_save_user_style(conn, row["user_id"])
     row = queries.get_session(conn, session_id)
     return SessionView(
         session_id=session_id,
