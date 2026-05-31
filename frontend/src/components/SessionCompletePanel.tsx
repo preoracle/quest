@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Play, RotateCcw, Sparkles, TrendingUp } from "lucide-react";
 import type { SessionView } from "@/api/types";
+import { InsightCard } from "@/components/InsightCard";
 import { SessionReportView } from "@/components/SessionReportView";
 import { Button } from "@/components/ui/button";
 
@@ -141,11 +142,21 @@ export function SessionCompletePanel({
         <p className="text-sm text-on-muted">{session.summary ?? "Well done."}</p>
       )}
 
+      {!isEmpty && (
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.45 }}
+        >
+          <InsightCard session={session} />
+        </motion.div>
+      )}
+
       <motion.div
         className="flex flex-wrap gap-3"
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.35 }}
+        transition={{ delay: 0.5 }}
       >
         {!topicComplete && onContinueStudy && (
           <Button disabled={continuingStudy} onClick={onContinueStudy}>

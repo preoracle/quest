@@ -13,11 +13,17 @@ import datetime as _dt
 
 from pydantic import BaseModel, Field, field_validator
 
+import logging
+
+from core.chains import build_evaluator_chain
+from core.eval_context import build_evaluator_invoke_payload
 from core.graph import checkpointer_session, build_quest_graph, seed_state_from_turns
 from core.models import EvaluatorOutput
 from core.session_report import SessionReport, build_session_report, report_from_json
 from core.topics import load_topic
 from db import queries
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationView(BaseModel):
@@ -152,10 +158,12 @@ def _initial_graph_state(
     concept_list: list[dict],
     *,
     replay_mode: bool = False,
+    student_name: str | None = None,
 ) -> dict:
     """Build the initial state dict for a brand-new LangGraph session."""
     return {
         "user_id": user_id,
+        "student_name": student_name,
         "topic_id": topic_id,
         "session_id": session_id,
         "concept_list": concept_list,
@@ -231,6 +239,7 @@ def get_session_view(session_id: str) -> SessionView:
             with queries.get_connection() as conn:
                 concept_list = queries.upsert_topic_concepts(conn, topic_data)
                 queries.get_or_create_user(conn, row["user_id"])
+                student_name = queries.get_user_name(conn, row["user_id"])
             # NO connection held during graph.invoke() (Claude API call)
             replay_mode = row.get("session_kind") == "replay"
             graph.invoke(
@@ -240,6 +249,7 @@ def get_session_view(session_id: str) -> SessionView:
                     row["topic"],
                     concept_list,
                     replay_mode=replay_mode,
+                    student_name=student_name,
                 ),
                 config,
             )
@@ -380,3 +390,60 @@ def submit_turn(
             display,
             waiting=bool(snapshot.next),
         )
+
+
+def re_evaluate_last_turn(session_id: str) -> EvaluationView:
+    """Re-run the evaluator on the most recent student answer and persist the result.
+
+    Used by the "this evaluation missed my point" flow. Logs the re-eval event
+    for prompt iteration. Raises ValueError if session or last turn is not found.
+    """
+    with queries.get_connection() as conn:
+        row = queries.get_session(conn, session_id)
+        if row is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        turn = queries.get_last_student_turn(conn, session_id)
+        if turn is None:
+            raise ValueError("No student turn found to re-evaluate")
+        topic_data = load_topic(row["topic"])
+        concept_list = queries.upsert_topic_concepts(conn, topic_data)
+
+    payload = build_evaluator_invoke_payload(
+        topic_id=row["topic"],
+        concept_list=concept_list,
+        tutor_question=turn["tutor_question"],
+        student_answer=turn["student_answer"],
+        history=None,
+    )
+
+    chain = build_evaluator_chain()
+    evaluation: EvaluatorOutput = chain.invoke(payload)
+
+    logger.info(
+        "re_eval session=%s turn_idx=%d old_score=? new_score=%d",
+        session_id,
+        turn["turn_idx"],
+        evaluation.score,
+    )
+
+    with queries.get_connection() as conn:
+        queries.update_turn_evaluation(
+            conn,
+            session_id,
+            turn["turn_idx"],
+            evaluator_score=evaluation.score,
+            evaluator_gaps=evaluation.gaps,
+            evaluator_reasoning=evaluation.reasoning,
+            evaluator_gap_type=evaluation.gap_type,
+            evaluator_expert_framing=evaluation.expert_framing,
+        )
+
+    return EvaluationView(
+        score=evaluation.score,
+        gaps=evaluation.gaps,
+        reasoning=evaluation.reasoning,
+        gap_type=evaluation.gap_type,
+        expert_framing=evaluation.expert_framing,
+        inferred_concept_id=evaluation.inferred_concept_id,
+        inferred_concept_confidence=evaluation.inferred_concept_confidence,
+    )

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/MessageContent";
 import { EvaluatingSkeleton } from "@/components/Skeleton";
@@ -5,7 +6,14 @@ import { masteryWord, scoreColor } from "@/lib/cycles";
 import type { CycleExchange } from "@/lib/cycles";
 
 /** Structured evaluation card — score + what you got right + gaps */
-function EvalCard({ eval: ev }: { eval: NonNullable<CycleExchange["eval"]> }) {
+function EvalCard({
+  eval: ev,
+  onReEval,
+}: {
+  eval: NonNullable<CycleExchange["eval"]>;
+  onReEval?: () => Promise<void>;
+}) {
+  const [reEvalPending, setReEvalPending] = useState(false);
   const tier = masteryWord(ev.score);
   const colorClass = scoreColor(ev.score);
   const isWeak = ev.score <= 3;
@@ -13,6 +21,16 @@ function EvalCard({ eval: ev }: { eval: NonNullable<CycleExchange["eval"]> }) {
   // Split reasoning: first sentence as "what you got right" proxy, rest as detail
   const sentences = ev.reasoning.split(/(?<=[.!?])\s+/);
   const summary = sentences[0] ?? ev.reasoning;
+
+  async function handleReEval() {
+    if (!onReEval || reEvalPending) return;
+    setReEvalPending(true);
+    try {
+      await onReEval();
+    } finally {
+      setReEvalPending(false);
+    }
+  }
 
   return (
     <div className="eval-card mt-4">
@@ -67,11 +85,30 @@ function EvalCard({ eval: ev }: { eval: NonNullable<CycleExchange["eval"]> }) {
           </p>
         </div>
       )}
+
+      {/* Re-eval affordance — only on the most recent exchange */}
+      {onReEval && (
+        <div className="border-t border-line/15 px-4 py-2.5 flex justify-end">
+          <button
+            onClick={() => void handleReEval()}
+            disabled={reEvalPending}
+            className="text-[11px] text-on-muted/35 hover:text-on-muted/65 transition-colors disabled:opacity-40"
+          >
+            {reEvalPending ? "Re-evaluating…" : "↩ This missed my point"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function Exchange({ exchange }: { exchange: CycleExchange }) {
+function Exchange({
+  exchange,
+  onReEval,
+}: {
+  exchange: CycleExchange;
+  onReEval?: () => Promise<void>;
+}) {
   return (
     <div>
       {/* Previous question — compact, de-emphasized */}
@@ -91,8 +128,8 @@ function Exchange({ exchange }: { exchange: CycleExchange }) {
         </div>
       )}
 
-      {/* Structured evaluation */}
-      {exchange.eval && <EvalCard eval={exchange.eval} />}
+      {/* Structured evaluation — hidden on turns 1–2 and when overlay is showing */}
+      {exchange.eval && !exchange.hideEval && <EvalCard eval={exchange.eval} onReEval={onReEval} />}
     </div>
   );
 }
@@ -103,12 +140,14 @@ export function ActiveCycle({
   currentQuestion,
   submitting = false,
   error,
+  onReEvalLast,
 }: {
   conceptName: string | null;
   exchanges: CycleExchange[];
   currentQuestion: string | null;
   submitting?: boolean;
   error?: string | null;
+  onReEvalLast?: () => Promise<void>;
 }) {
   const hasCurrentQuestion = !!currentQuestion;
   const lastExchange = exchanges.length > 0 ? exchanges[exchanges.length - 1] : null;
@@ -134,10 +173,10 @@ export function ActiveCycle({
         </p>
       )}
 
-      {/* Most recent completed exchange */}
+      {/* Most recent completed exchange — re-eval affordance attached */}
       {lastExchange && (
         <div className={cn(hasCurrentQuestion && "mb-12")}>
-          <Exchange exchange={lastExchange} />
+          <Exchange exchange={lastExchange} onReEval={onReEvalLast} />
         </div>
       )}
 

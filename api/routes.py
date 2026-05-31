@@ -34,7 +34,7 @@ from api.schemas import (
     UpdateTopicRequest,
 )
 from core.baseline_api import BaselineView, start_baseline, submit_baseline_answer
-from core.session_api import SessionView, finish_session, get_session_view, start_session, submit_turn
+from core.session_api import EvaluationView, SessionView, finish_session, get_session_view, re_evaluate_last_turn, start_session, submit_turn
 from core.topic_catalog import list_topic_catalog
 from core.topic_generator import generate_topic_payload, write_topic_yaml
 from core.topic_graph import TopicGraph, get_topic_graph, topic_mastery_summary
@@ -474,6 +474,25 @@ def finish_session_route(session_id: str) -> SessionView:
         raise  # let FastAPI return 500 with the real error — not a 404
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
+        raise_llm_http_error(exc)
+    except Exception as exc:
+        raise_llm_http_error(exc)
+
+
+@router.post("/sessions/{session_id}/re-evaluate-last", response_model=EvaluationView)
+def re_evaluate_last_route(
+    session_id: str,
+    current_user: str = Depends(get_uid),
+) -> EvaluationView:
+    """Re-run the evaluator on the most recent answer; used by the re-eval button."""
+    try:
+        return re_evaluate_last_turn(session_id)
+    except ValueError as exc:
+        msg = str(exc)
+        if "Unknown session" in msg or "No student turn" in msg:
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
     except (AuthenticationError, RateLimitError, APIConnectionError, APIStatusError) as exc:
         raise_llm_http_error(exc)
     except Exception as exc:

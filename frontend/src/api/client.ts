@@ -1,6 +1,7 @@
 import type {
   BaselineView,
   DueResponse,
+  Evaluation,
   MasteryResponse,
   SessionView,
   StartMode,
@@ -165,6 +166,12 @@ export function fetchSessionTurns(sessionId: string): Promise<TurnItem[]> {
 
 export function finishSession(sessionId: string): Promise<SessionView> {
   return request<SessionView>(`/sessions/${sessionId}/finish`, { method: "POST" });
+}
+
+export function reEvaluateLast(sessionId: string): Promise<Evaluation> {
+  return request<Evaluation>(`/sessions/${sessionId}/re-evaluate-last`, {
+    method: "POST",
+  });
 }
 
 export function fetchMastery(topic?: string): Promise<MasteryResponse> {

@@ -157,6 +157,7 @@ export function SessionPanel({
   visitedNames,
   activeName,
   keyGaps,
+  observationNote,
   onWrapUp,
   wrappingUp,
 }: {
@@ -165,6 +166,7 @@ export function SessionPanel({
   visitedNames: Set<string>;
   activeName: string | null;
   keyGaps: string[];
+  observationNote?: string;
   onWrapUp: () => void;
   wrappingUp: boolean;
 }) {
@@ -195,6 +197,13 @@ export function SessionPanel({
             </div>
           )}
         </div>
+
+        {/* Model-of-me observation — appears after 2+ evals with a consistent gap pattern */}
+        {observationNote && (
+          <p className="text-[11px] italic leading-relaxed text-on-muted/70">
+            {observationNote}
+          </p>
+        )}
 
         {/* Knowledge map — concept DAG with live state */}
         {nodes.length > 0 && (

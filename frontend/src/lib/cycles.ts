@@ -4,6 +4,7 @@ export interface CycleExchange {
   id: string;
   question: string;
   answer: string;
+  hideEval?: boolean;
   eval: {
     score: number;
     gaps: string[];

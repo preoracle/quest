@@ -181,6 +181,12 @@ def get_or_create_user(
     return user_id
 
 
+def get_user_name(conn, user_id: str) -> str | None:
+    """Return the stored display name for a user, or None if not found."""
+    row = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row["name"] if row else None
+
+
 def upsert_topic_concepts(conn: sqlite3.Connection, topic_data: dict[str, Any]) -> list[dict[str, str]]:
     """Upsert topic + concept rows from a parsed concept YAML dict.
 
@@ -1065,5 +1071,79 @@ def unenroll_topic(conn, user_id: str, topic_id: str) -> None:
     conn.execute(
         "DELETE FROM user_topics WHERE user_id = ? AND topic_id = ?",
         (user_id, topic_id),
+    )
+    conn.commit()
+
+
+def get_last_student_turn(
+    conn,
+    session_id: str,
+) -> dict | None:
+    """Return the most recent student (user-role) turn and the preceding tutor question.
+
+    Returns a dict with keys: turn_idx, student_answer, tutor_question.
+    Returns None if no student turn exists yet.
+    """
+    row = conn.execute(
+        """
+        SELECT turn_idx, content FROM turns
+        WHERE session_id = ? AND role = 'user'
+        ORDER BY turn_idx DESC
+        LIMIT 1
+        """,
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return None
+
+    student_turn_idx = int(row["turn_idx"])
+    student_answer = row["content"]
+
+    tutor_row = conn.execute(
+        """
+        SELECT content FROM turns
+        WHERE session_id = ? AND role = 'tutor' AND turn_idx < ?
+        ORDER BY turn_idx DESC
+        LIMIT 1
+        """,
+        (session_id, student_turn_idx),
+    ).fetchone()
+    tutor_question = tutor_row["content"] if tutor_row else ""
+
+    return {
+        "turn_idx": student_turn_idx,
+        "student_answer": student_answer,
+        "tutor_question": tutor_question,
+    }
+
+
+def update_turn_evaluation(
+    conn,
+    session_id: str,
+    turn_idx: int,
+    *,
+    evaluator_score: int,
+    evaluator_gaps: list[str],
+    evaluator_reasoning: str,
+    evaluator_gap_type: str | None,
+    evaluator_expert_framing: str | None,
+) -> None:
+    """Overwrite the stored evaluator fields for a turn (used by re-evaluate flow)."""
+    gaps_json = json.dumps(evaluator_gaps)
+    conn.execute(
+        """
+        UPDATE turns SET
+            evaluator_score = ?,
+            evaluator_gaps_json = ?,
+            evaluator_reasoning = ?,
+            evaluator_gap_type = ?,
+            evaluator_expert_framing = ?
+        WHERE session_id = ? AND turn_idx = ?
+        """,
+        (
+            evaluator_score, gaps_json, evaluator_reasoning,
+            evaluator_gap_type, evaluator_expert_framing,
+            session_id, turn_idx,
+        ),
     )
     conn.commit()

@@ -5,6 +5,7 @@ import {
   fetchSessionTurns,
   fetchTopicGraph,
   finishSession,
+  reEvaluateLast,
   startSession,
   submitTurn,
 } from "@/api/client";
@@ -21,6 +22,7 @@ import { SessionPageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { gutterPx } from "@/lib/layout";
 import { cn } from "@/lib/utils";
+import { deriveObservation } from "@/lib/observation";
 import {
   buildExchangesFromTurns,
   firstSentence,
@@ -132,19 +134,33 @@ export function SessionPage() {
     try {
       const next = await submitTurn(sessionId, text);
 
+      // Count evaluated turns so far (before this new one) to enforce the
+      // "no score on turns 1–2, overlay only for ≥4/5 from turn 3 onward" rule.
+      const evalCount = [
+        ...completedCycles.flatMap((c) => c.exchanges),
+        ...activeExchanges,
+      ].filter((e) => e.eval != null).length;
+      const thisTurnOrdinal = evalCount + 1; // 1-indexed
+      const evalData = next.last_evaluation
+        ? {
+            score: next.last_evaluation.score,
+            gaps: next.last_evaluation.gaps,
+            reasoning: next.last_evaluation.reasoning,
+            gap_type: next.last_evaluation.gap_type ?? null,
+            expert_framing: next.last_evaluation.expert_framing ?? null,
+          }
+        : null;
+      const showReveal = (ev: { score: number } | null | undefined) =>
+        !!ev && thisTurnOrdinal >= 3 && ev.score >= 4;
+      // Hide inline EvalCard on turns 1–2, and when the overlay is showing (avoid duplication)
+      const hideEval = thisTurnOrdinal < 3 || showReveal(evalData);
+
       const newExchange: CycleExchange = {
         id: `e-${Date.now()}`,
         question: currentQuestion,
         answer: text,
-        eval: next.last_evaluation
-          ? {
-              score: next.last_evaluation.score,
-              gaps: next.last_evaluation.gaps,
-              reasoning: next.last_evaluation.reasoning,
-              gap_type: next.last_evaluation.gap_type ?? null,
-              expert_framing: next.last_evaluation.expert_framing ?? null,
-            }
-          : null,
+        hideEval,
+        eval: evalData,
       };
 
       const focusChanged = next.focus != null && next.focus !== prevFocus;
@@ -164,13 +180,13 @@ export function SessionPage() {
         setActiveExchanges([]);
         setActiveConceptName(next.focus);
 
-        // Reveal the score for the completed concept
-        if (lastEval) {
+        // Reveal overlay only from turn 3+ and only for high scores
+        if (showReveal(lastEval)) {
           setPendingReveal({
-            score: lastEval.score,
-            gaps: lastEval.gaps,
-            reasoning: lastEval.reasoning,
-            expert_framing: lastEval.expert_framing ?? null,
+            score: lastEval!.score,
+            gaps: lastEval!.gaps,
+            reasoning: lastEval!.reasoning,
+            expert_framing: lastEval!.expert_framing ?? null,
             conceptName: prevFocus ?? activeConceptName,
             conceptComplete: true,
             nextConceptName: next.focus,
@@ -183,13 +199,13 @@ export function SessionPage() {
           setActiveConceptName(next.focus);
         }
 
-        // Show reveal for mid-concept evaluations too
-        if (newExchange.eval) {
+        // Overlay only from turn 3+ and only for high scores; inline EvalCard handles the rest
+        if (showReveal(newExchange.eval)) {
           setPendingReveal({
-            score: newExchange.eval.score,
-            gaps: newExchange.eval.gaps,
-            reasoning: newExchange.eval.reasoning,
-            expert_framing: newExchange.eval.expert_framing ?? null,
+            score: newExchange.eval!.score,
+            gaps: newExchange.eval!.gaps,
+            reasoning: newExchange.eval!.reasoning,
+            expert_framing: newExchange.eval!.expert_framing ?? null,
             conceptName: activeConceptName ?? next.focus,
             conceptComplete: false,
           });
@@ -250,6 +266,29 @@ export function SessionPage() {
     }
   }
 
+  async function handleReEvalLast() {
+    if (!sessionId) return;
+    const newEval = await reEvaluateLast(sessionId);
+    setActiveExchanges((prev) => {
+      if (prev.length === 0) return prev;
+      const copy = [...prev];
+      copy[copy.length - 1] = {
+        ...copy[copy.length - 1],
+        eval: {
+          score: newEval.score,
+          gaps: newEval.gaps,
+          reasoning: newEval.reasoning,
+          gap_type: newEval.gap_type ?? null,
+          expert_framing: newEval.expert_framing ?? null,
+        },
+      };
+      return copy;
+    });
+    setSession((prev) =>
+      prev ? { ...prev, last_evaluation: newEval } : prev,
+    );
+  }
+
   function toggleCycle(id: string) {
     setExpandedCycleIds((prev) => {
       const next = new Set(prev);
@@ -280,6 +319,14 @@ export function SessionPage() {
         .flatMap((e) => e.eval!.gaps),
     ),
   ).slice(0, 3);
+
+  const allEvals = [
+    ...completedCycles.flatMap((c) => c.exchanges),
+    ...activeExchanges,
+  ]
+    .filter((e) => e.eval != null)
+    .map((e) => e.eval!);
+  const observationNote = deriveObservation(allEvals);
 
   return (
     <AppShell
@@ -339,6 +386,7 @@ export function SessionPage() {
                 visitedNames={visitedConceptNames}
                 activeName={activeConceptName}
                 keyGaps={keyGaps}
+                observationNote={observationNote ?? undefined}
                 onWrapUp={() => void wrapUp()}
                 wrappingUp={wrappingUp}
               />
@@ -352,6 +400,7 @@ export function SessionPage() {
                 }
                 submitting={submitting}
                 error={error}
+                onReEvalLast={handleReEvalLast}
               />
             }
             pinnedBottom={

@@ -107,6 +107,7 @@ class QuestState(TypedDict, total=False):
     """Graph state persisted by LangGraph checkpointer."""
 
     user_id: str
+    student_name: str | None
     topic_id: str
     session_id: str
     concept_list: list[dict]
@@ -153,12 +154,22 @@ def _get_checkpointer_pool():
         from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
         _checkpointer_pool = ConnectionPool(
             db_url,
-            min_size=2,
-            max_size=20,  # was 5 — each concurrent session holds a connection during LLM call
+            min_size=0,   # don't pre-warm — avoids stale idle connections
+            max_size=20,
+            open=False,   # open lazily on first use
             # autocommit + no prepared statements: required for Supabase
             # Transaction Pooler (PgBouncer transaction mode).
-            kwargs={"autocommit": True, "prepare_threshold": None},
+            # keepalives prevent the server from silently dropping idle TCP connections.
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": None,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+            },
         )
+        _checkpointer_pool.open(wait=True)
         # Create checkpoint tables once at startup
         with _checkpointer_pool.connection() as conn:
             PostgresSaver(conn).setup()
@@ -310,6 +321,30 @@ def build_quest_graph(checkpointer):
                 f"Ask your opening Socratic question for concept '{concept_name}'. "
                 f"{_TASK_INSTRUCTION}"
             )
+            # If a prior concept was completed this session, inject its final exchange
+            # so the tutor doesn't re-ask questions the student already answered.
+            completed_ids: list[str] = list(state.get("completed_concept_ids") or [])
+            if completed_ids:
+                concept_map = {c["id"]: c["name"] for c in (state.get("concept_list") or [])}
+                prior_concept_name = concept_map.get(completed_ids[-1], "the prior concept")
+                history = list(state.get("history") or [])
+                # Find the last AI question and human answer before this concept started
+                last_ai = next(
+                    (m["content"] for m in reversed(history) if m.get("role") == "ai"),
+                    None,
+                )
+                last_human = next(
+                    (m["content"] for m in reversed(history) if m.get("role") == "human"),
+                    None,
+                )
+                if last_ai and last_human:
+                    prior_q = last_ai[:200].rstrip()
+                    prior_a = last_human[:200].rstrip()
+                    steer += (
+                        f" IMPORTANT: The student just completed '{prior_concept_name}'."
+                        f" Their final exchange — Q: \"{prior_q}\" / A: \"{prior_a}\"."
+                        " Do NOT re-ask this angle. Start one layer deeper, building on what they demonstrated."
+                    )
             if scope:
                 # One punchy nudge — cap at 120 chars so the scope hint doesn't
                 # balloon into a multi-part brief that tempts compound questions.
@@ -357,6 +392,10 @@ def build_quest_graph(checkpointer):
                         "do NOT directly quote scores to the student): "
                         + " | ".join(profile_parts)
                     )
+            student_name = state.get("student_name")
+            if student_name and student_name not in ("Default User", ""):
+                first_name = student_name.split()[0]
+                steer += f" Student's first name: {first_name} (use occasionally, not every message)."
             steer += "]"
             invoke_history = [HumanMessage(content=steer)]
         else:
@@ -399,6 +438,16 @@ def build_quest_graph(checkpointer):
                         )
                     else:
                         parts.append(f"Last eval: {last_score}/5, gap={last_gap_type}")
+                # Mirror student phrasing: give the tutor the exact words the student used
+                # so it can echo a phrase back as the hinge of the next question.
+                student_messages = [m for m in persisted if isinstance(m, HumanMessage)]
+                if student_messages:
+                    last_ans = student_messages[-1].content
+                    if isinstance(last_ans, str) and not last_ans.startswith("[Instructor"):
+                        snippet = last_ans.strip()[:150]
+                        parts.append(
+                            f"Student's last answer — use a fragment of their exact phrasing as a hinge: \"{snippet}\""
+                        )
                 if parts:
                     pace_note = "[Instructor note: " + " | ".join(parts) + "]"
                     invoke_history = persisted + [HumanMessage(content=pace_note)]
@@ -613,6 +662,7 @@ def seed_state_from_turns(
     user_id: str,
     topic_id: str,
     concept_list: list[dict],
+    student_name: str | None = None,
 ) -> QuestState:
     """Rebuild graph state from DB turns when checkpoint is missing."""
     turns = queries.get_turns_for_session(conn, session_id)
@@ -625,6 +675,7 @@ def seed_state_from_turns(
             last_tutor = t["content"]
     return {
         "user_id": user_id,
+        "student_name": student_name,
         "topic_id": topic_id,
         "session_id": session_id,
         "concept_list": concept_list,
