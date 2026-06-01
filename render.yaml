@@ -60,6 +60,8 @@ services:
     name: quest-api
     runtime: docker
     dockerfilePath: ./Dockerfile.api
+    # Overrides Dockerfile CMD; must bind 0.0.0.0 to Render's $PORT (not 127.0.0.1:8000).
+    startCommand: ./scripts/start_api.sh
     plan: free
     healthCheckPath: /health
     envVars:

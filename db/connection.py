@@ -168,7 +168,11 @@ def _get_pg_pool():
                 # transaction mode): each transaction may land on a different
                 # backend connection, so prepared statements made in one
                 # transaction are invisible in the next → DuplicatePreparedStatement.
-                kwargs={"row_factory": dict_row, "prepare_threshold": None},
+                kwargs={
+                    "row_factory": dict_row,
+                    "prepare_threshold": None,
+                    "connect_timeout": 10,
+                },
             )
         except ImportError as exc:
             raise ImportError(

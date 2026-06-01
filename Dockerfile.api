@@ -14,7 +14,9 @@ RUN uv sync --frozen --extra api --extra postgres --no-dev
 # ── Application code ──────────────────────────────────────────────────────────
 COPY . .
 
+ENV PORT=8000
 EXPOSE 8000
 
-# uv run ensures the virtualenv is activated
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x scripts/start_api.sh
+# Render injects PORT at runtime; must listen on 0.0.0.0 (not 127.0.0.1).
+CMD ["./scripts/start_api.sh"]

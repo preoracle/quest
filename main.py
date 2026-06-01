@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -39,12 +42,25 @@ def _cors_origin_regex() -> str | None:
     return raw or None
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Initialize SQLite on startup."""
+    """Load env and initialize the DB without blocking the listen socket."""
     load_dotenv()
-    queries.init_db()
+
+    async def _init_db() -> None:
+        try:
+            await asyncio.to_thread(queries.init_db)
+        except Exception:
+            logger.exception("Database initialization failed")
+
+    init_task = asyncio.create_task(_init_db())
     yield
+    init_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await init_task
 
 
 app = FastAPI(

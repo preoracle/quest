@@ -77,8 +77,10 @@ docker build -f Dockerfile.api -t quest-api .
 
 Option B — **Render buildpack** (no Docker):
 - Runtime: Python 3.12
-- Build command: `pip install uv && uv sync --extra api --extra postgres --no-dev`
-- Start command: `uv run uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Build command: `pip install uv && uv sync --frozen --extra api --extra postgres --no-dev`
+- Start command: `./scripts/start_api.sh` (or `uv run uvicorn main:app --host 0.0.0.0 --port $PORT`)
+
+> **Render deploy timeout ("no open ports detected")** — the process must listen on `0.0.0.0` at Render's `$PORT` (not `127.0.0.1:8000`). Wrong host/port is the usual cause; a hanging `DATABASE_URL` connection during startup is the other (check Supabase pooler URL, port 6543).
 
 **Required env vars on the backend host:**
 
