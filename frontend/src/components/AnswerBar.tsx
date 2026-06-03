@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef } from "react";
-import { Loader2, Mic, Send } from "lucide-react";
+import { Loader2, Mic, Send, Volume2, VolumeX } from "lucide-react";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 import { ContentTrack } from "@/components/ContentColumn";
 import { gutterPx } from "@/lib/layout";
 import { Button } from "@/components/ui/button";
@@ -20,14 +21,33 @@ export function AnswerBar({
   onSubmit,
   submitting,
   disabled,
+  voiceMode = false,
+  onVoiceModeChange,
+  pendingQuestion,
+  onQuestionSpoken,
+  sessionId,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
   submitting: boolean;
   disabled?: boolean;
+  voiceMode?: boolean;
+  onVoiceModeChange?: (enabled: boolean) => void;
+  pendingQuestion?: string | null;
+  onQuestionSpoken?: () => void;
+  sessionId?: string;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftKey = sessionId ? `draft_${sessionId}` : null;
+
+  // Restore draft on mount
+  useEffect(() => {
+    if (!draftKey) return;
+    const saved = sessionStorage.getItem(draftKey);
+    if (saved && !value) onChange(saved);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -36,19 +56,43 @@ export function AnswerBar({
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
-  const { supported, listening, toggle } = useSpeechToText({
+  const { supported: sttSupported, listening, toggle: toggleSTT } = useSpeechToText({
     baseText: value,
     onPhrase: onChange,
   });
 
+  const { supported: ttsSupported, speaking, speak, stop } = useTextToSpeech();
+
+  // When a new question arrives in voice mode, speak it.
+  const spokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (voiceMode && pendingQuestion && pendingQuestion !== spokenRef.current) {
+      spokenRef.current = pendingQuestion;
+      speak(pendingQuestion);
+    }
+  }, [pendingQuestion, voiceMode, speak]);
+
+  // After TTS finishes, auto-start STT.
+  const prevSpeakingRef = useRef(false);
+  useEffect(() => {
+    if (prevSpeakingRef.current && !speaking && voiceMode && sttSupported) {
+      toggleSTT();
+      onQuestionSpoken?.();
+    }
+    prevSpeakingRef.current = speaking;
+  }, [speaking, voiceMode, sttSupported, toggleSTT, onQuestionSpoken]);
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    stop();
+    if (draftKey) sessionStorage.removeItem(draftKey);
     onSubmit();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
+      stop();
       onSubmit();
     }
   }
@@ -56,6 +100,7 @@ export function AnswerBar({
   const wordCount = value.trim() ? value.trim().split(/\s+/).filter(Boolean).length : 0;
   const wLabel = wordCountLabel(wordCount);
   const canSubmit = wordCount >= 1 && !submitting && !disabled;
+  const showVoiceToggle = sttSupported && ttsSupported;
 
   return (
     <form onSubmit={handleSubmit} className={cn("shrink-0 pb-3", gutterPx)}>
@@ -68,7 +113,10 @@ export function AnswerBar({
               ref={textareaRef}
               id="answer"
               value={value}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => {
+                onChange(e.target.value);
+                if (draftKey) sessionStorage.setItem(draftKey, e.target.value);
+              }}
               onKeyDown={onKeyDown}
               disabled={disabled || submitting}
               rows={4}
@@ -85,18 +133,36 @@ export function AnswerBar({
 
           {/* Toolbar */}
           <div className="flex items-center gap-2 border-t border-line/25 px-4 pt-2.5 pb-3">
-            {/* Word count with contextual copy */}
+            {/* Word count */}
             <span className={cn("tabular-nums text-xs transition-colors", wLabel.class)}>
               {wLabel.text}
             </span>
 
             <div className="flex-1" />
 
-            {/* Speech to text */}
-            {supported && (
+            {/* Voice mode toggle */}
+            {showVoiceToggle && (
               <button
                 type="button"
-                onClick={toggle}
+                onClick={() => onVoiceModeChange?.(!voiceMode)}
+                aria-pressed={voiceMode}
+                aria-label={voiceMode ? "Disable voice mode" : "Enable voice mode"}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-colors",
+                  voiceMode
+                    ? "bg-accent/20 text-accent ring-1 ring-accent/30"
+                    : "text-on-muted/35 hover:text-on-muted/60",
+                )}
+              >
+                {voiceMode ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+              </button>
+            )}
+
+            {/* Mic button (STT) */}
+            {sttSupported && (
+              <button
+                type="button"
+                onClick={toggleSTT}
                 disabled={disabled || submitting}
                 aria-pressed={listening}
                 aria-label={listening ? "Stop dictation" : "Start dictation"}
@@ -111,7 +177,10 @@ export function AnswerBar({
               </button>
             )}
 
-            {listening ? (
+            {/* Status label */}
+            {speaking ? (
+              <span className="text-xs font-medium text-accent/80">Speaking…</span>
+            ) : listening ? (
               <span className="text-xs font-medium text-accent">Listening…</span>
             ) : (
               <span className="hidden items-center gap-0.5 sm:flex">

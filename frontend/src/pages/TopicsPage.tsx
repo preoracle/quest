@@ -202,7 +202,17 @@ export function TopicsPage() {
         <CreateTopicPanel
           open={showCreate}
           onClose={() => setShowCreate(false)}
-          onCreated={reloadCatalog}
+          onCreated={async (id) => {
+            reloadCatalog();
+            if (id) {
+              try {
+                const session = await startSession(id, "resume");
+                navigate(`/session/${session.session_id}`);
+              } catch {
+                navigate(`/topics/${id}`);
+              }
+            }
+          }}
         />
       </div>
 

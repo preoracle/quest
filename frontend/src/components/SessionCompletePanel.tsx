@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Play, RotateCcw, Sparkles, TrendingUp } from "lucide-react";
+import { CheckCircle2, Download, Play, RotateCcw, Sparkles, TrendingUp } from "lucide-react";
 import type { SessionView } from "@/api/types";
 import { InsightCard } from "@/components/InsightCard";
 import { SessionReportView } from "@/components/SessionReportView";
 import { Button } from "@/components/ui/button";
+import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 
 export function SessionCompletePanel({
   session,
@@ -20,6 +21,8 @@ export function SessionCompletePanel({
   startingFresh?: boolean;
 }) {
   const reduce = useReducedMotion();
+  const { canInstall, promptInstall } = useInstallPrompt();
+  const installDismissed = localStorage.getItem("install_dismissed") === "1";
   const evaluated = session.report?.evaluated_answers ?? 0;
   const isEmpty = evaluated === 0;
   const concepts = session.report?.concepts ?? [];
@@ -149,6 +152,58 @@ export function SessionCompletePanel({
           transition={{ delay: 0.4, duration: 0.45 }}
         >
           <InsightCard session={session} />
+        </motion.div>
+      )}
+
+      {!isEmpty && (() => {
+        const blindSpots = concepts.filter((c) => c.last_score <= 3).length;
+        if (blindSpots === 0) return null;
+        // Mark onboarded on first session completion
+        localStorage.setItem("quest_onboarded", "1");
+        return (
+          <motion.p
+            className="text-sm text-on-muted text-center"
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+          >
+            Quest found{" "}
+            <span className="font-semibold text-on-surface">{blindSpots} blind spot{blindSpots !== 1 ? "s" : ""}</span>
+            {" "}in{" "}
+            <span className="font-semibold text-on-surface">{session.topic_display}</span>.
+            {" "}Come back tomorrow to close them.
+          </motion.p>
+        );
+      })()}
+
+      {!isEmpty && canInstall && !installDismissed && (
+        <motion.div
+          className="flex items-center justify-between gap-3 rounded-xl border border-line/40 bg-surface/20 px-4 py-3"
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.7 }}
+        >
+          <p className="text-sm text-on-muted">Add Quest to your home screen for instant access.</p>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                localStorage.setItem("install_dismissed", "1");
+              }}
+              className="text-xs"
+            >
+              Not now
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void promptInstall()}
+              className="text-xs"
+            >
+              <Download className="size-3.5" />
+              Add
+            </Button>
+          </div>
         </motion.div>
       )}
 

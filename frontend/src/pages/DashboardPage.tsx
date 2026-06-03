@@ -5,7 +5,8 @@ import {
   ArrowRight, BookOpen, CalendarCheck, Flame, Loader2, Plus, Send,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchDue, fetchStreak, fetchTopics, generateTopic, postStudyDay, startSession } from "@/api/client";
+import { fetchDecaying, fetchDue, fetchStreak, fetchTopics, generateTopic, postStudyDay, startSession } from "@/api/client";
+import type { DecayingConcept } from "@/api/client";
 import { AppShell } from "@/components/AppShell";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import { MasteryTicks } from "@/components/MasteryTicks";
@@ -276,8 +277,15 @@ export function DashboardPage() {
     staleTime: 30_000,
   });
 
+  const { data: decayingData } = useQuery<DecayingConcept[]>({
+    queryKey: ["decaying"],
+    queryFn: () => fetchDecaying(2),
+    staleTime: 300_000,
+  });
+
   const dueItems = dueData?.items ?? [];
   const dueCount = dueItems.length;
+  const fadingConcepts = (decayingData ?? []).slice(0, 3);
 
   const ranked = rankTopics(topicsData ?? []);
   const inProgress = ranked.filter((t) => t.started);
@@ -376,15 +384,42 @@ export function DashboardPage() {
                 </p>
               </div>
               {streak > 0 && (
-                <div className="flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-dim/30 px-3 py-1.5">
-                  <Flame className="size-3.5 text-accent" />
-                  <span className="font-mono text-xs font-semibold text-accent">
-                    {streak}-day streak
-                  </span>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-dim/30 px-3 py-1.5">
+                    <Flame className="size-3.5 text-accent" />
+                    <span className="font-mono text-xs font-semibold text-accent">
+                      {streak}-day streak
+                    </span>
+                  </div>
+                  {streakData?.recovered && (
+                    <span className="text-[10px] text-on-muted/70">
+                      Streak saved · 1 recovery used this month
+                    </span>
+                  )}
                 </div>
               )}
             </div>
           </div>
+
+          {/* ── Fading (decaying mastery urgency) ── */}
+          {hasData && fadingConcepts.length > 0 && (
+            <div className="rounded-xl border border-orange-500/20 bg-surface/20 p-4 md:p-5">
+              <p className="section-label mb-3 text-orange-400/80">Fading</p>
+              <div className="flex flex-col gap-2">
+                {fadingConcepts.map((c) => (
+                  <div key={c.concept_id} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`size-2 shrink-0 rounded-full ${c.days_overdue > 3 ? "bg-red-500" : c.days_overdue > 0 ? "bg-orange-400" : "bg-yellow-400"}`} />
+                      <span className="truncate text-sm text-on-surface">{c.concept_name}</span>
+                    </div>
+                    <span className="shrink-0 text-xs text-on-muted/70">
+                      {c.days_overdue > 0 ? `${c.days_overdue}d overdue` : "due soon"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Today's Mission (solo mode when no active topics) ── */}
           {hasData && recommendation && !hasActivity && (

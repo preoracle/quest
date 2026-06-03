@@ -30,6 +30,7 @@ import {
   type CycleExchange,
 } from "@/lib/cycles";
 import { setActiveSession } from "@/lib/activeSession";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 
 export function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -57,6 +58,11 @@ export function SessionPage() {
 
   // Score reveal overlay
   const [pendingReveal, setPendingReveal] = useState<RevealData | null>(null);
+
+  // Voice mode
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [spokenQuestion, setSpokenQuestion] = useState<string | null>(null);
+  const { speaking, stop: stopSpeech } = useTextToSpeech();
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -121,10 +127,17 @@ export function SessionPage() {
       .catch(() => {});
   }, [session?.topic_id]);
 
+  useEffect(() => {
+    if (voiceMode && session?.waiting_for_answer && session?.tutor_message && !submitting) {
+      setSpokenQuestion(session.tutor_message);
+    }
+  }, [session?.tutor_message, voiceMode, session?.waiting_for_answer, submitting]);
+
   async function onSubmit() {
     if (!sessionId || !answer.trim() || submitting || !session?.waiting_for_answer) {
       return;
     }
+    stopSpeech();
     const text = answer.trim();
     const prevFocus = session.focus;
     const currentQuestion = session.tutor_message ?? "";
@@ -399,6 +412,7 @@ export function SessionPage() {
                   session.waiting_for_answer ? session.tutor_message : null
                 }
                 submitting={submitting}
+                speaking={speaking}
                 error={error}
                 onReEvalLast={handleReEvalLast}
               />
@@ -410,6 +424,11 @@ export function SessionPage() {
                   onChange={setAnswer}
                   onSubmit={() => void onSubmit()}
                   submitting={submitting}
+                  voiceMode={voiceMode}
+                  onVoiceModeChange={setVoiceMode}
+                  pendingQuestion={spokenQuestion}
+                  onQuestionSpoken={() => setSpokenQuestion(null)}
+                  sessionId={sessionId}
                 />
               ) : (
                 <div className={cn(gutterPx, "py-4")}>

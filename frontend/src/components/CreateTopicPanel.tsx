@@ -15,7 +15,7 @@ export function CreateTopicPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (topicId?: string) => void;
 }) {
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,7 +28,7 @@ export function CreateTopicPanel({
       const result = await generateTopic(goal.trim());
       setGoal("");
       onClose();
-      onCreated();
+      onCreated(result.topic_id);
       toast.success(`Topic "${result.topic_id}" created`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");

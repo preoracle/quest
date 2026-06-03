@@ -187,6 +187,7 @@ export function fetchDue(topic?: string): Promise<DueResponse> {
 export interface StreakData {
   streak: number;
   dates: string[];
+  recovered?: boolean;
 }
 
 export function fetchStreak(): Promise<StreakData> {
@@ -195,4 +196,32 @@ export function fetchStreak(): Promise<StreakData> {
 
 export function postStudyDay(): Promise<StreakData> {
   return request<StreakData>("/me/study-day", { method: "POST" });
+}
+
+export function savePushSubscription(subscription: PushSubscriptionJSON): Promise<void> {
+  return request<void>("/me/push-subscription", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription),
+  });
+}
+
+export function removePushSubscription(endpoint: string): Promise<void> {
+  return request<void>("/me/push-subscription", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
+export interface DecayingConcept {
+  concept_id: string;
+  concept_name: string;
+  topic_id: string;
+  days_overdue: number;
+  last_reviewed_at: string | null;
+}
+
+export function fetchDecaying(horizonDays = 2): Promise<DecayingConcept[]> {
+  return request<DecayingConcept[]>(`/users/me/decaying?horizon_days=${horizonDays}`);
 }

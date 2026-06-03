@@ -139,6 +139,7 @@ export function ActiveCycle({
   exchanges,
   currentQuestion,
   submitting = false,
+  speaking = false,
   error,
   onReEvalLast,
 }: {
@@ -146,6 +147,7 @@ export function ActiveCycle({
   exchanges: CycleExchange[];
   currentQuestion: string | null;
   submitting?: boolean;
+  speaking?: boolean;
   error?: string | null;
   onReEvalLast?: () => Promise<void>;
 }) {
@@ -183,6 +185,25 @@ export function ActiveCycle({
       {/* Current question — the hero element */}
       {hasCurrentQuestion && (
         <div className={cn(lastExchange && "border-t border-line/10 pt-10")}>
+          {speaking && (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex items-end gap-[3px]">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="w-[3px] rounded-sm bg-accent/60 animate-bounce"
+                    style={{
+                      height: `${[8, 12, 7][i]}px`,
+                      animationDelay: `${i * 0.12}s`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-accent/60">
+                Speaking
+              </span>
+            </div>
+          )}
           <div className="question-hero">
             <MessageContent
               text={currentQuestion}
