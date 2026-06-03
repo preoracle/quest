@@ -92,6 +92,7 @@ class GeneratedConcept(BaseModel):
     name: str = Field(..., min_length=1)
     description: str = ""
     prerequisites: list[str] = Field(default_factory=list)
+    difficulty: int = Field(default=1, ge=1, le=3)
 
 
 class GeneratedTopicMap(BaseModel):

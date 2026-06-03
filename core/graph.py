@@ -273,8 +273,13 @@ def build_quest_graph(checkpointer):
                 scores, reviews, eval_counts = queries.get_mastery_maps(
                     conn, user_id, topic_id,
                 )
+                # New users to this topic start with difficulty-1 concepts only
+                # so they always see foundational questions before mechanism ones.
+                total_evals = sum(eval_counts.values())
+                max_diff = 1 if total_evals == 0 else 3
                 nxt = pick_next_concept(
-                    concepts, topic_id, scores, reviews, eval_counts=eval_counts,
+                    concepts, topic_id, scores, reviews,
+                    eval_counts=eval_counts, max_difficulty=max_diff,
                 )
         if nxt is None:
             return {
@@ -418,7 +423,26 @@ def build_quest_graph(checkpointer):
                 last_score = last_eval.get("score")
                 last_gap_type = last_eval.get("gap_type", "none")
                 last_expert_framing = last_eval.get("expert_framing")
+                turns_in_session = state.get("turn_idx", 0)
+                # Count the tail of recent_scores that are all ≤ 2 (consecutive low scores)
+                consecutive_low = 0
+                for s in reversed(recent_scores):
+                    if s <= 2:
+                        consecutive_low += 1
+                    else:
+                        break
                 parts: list[str] = []
+                if turns_in_session > 15:
+                    parts.append(
+                        f"turns_in_session={turns_in_session} — this is a long session. "
+                        "If the student still struggles, gently signal this concept needs more time."
+                    )
+                if consecutive_low >= 2:
+                    parts.append(
+                        f"consecutive_low_scores={consecutive_low} (all ≤ 2). "
+                        "Find the MOST PRIMITIVE version of this concept — the smallest possible "
+                        "question they might be able to answer. Strip it down to first principles."
+                    )
                 if turn_count >= 3 or is_stuck or is_plateau:
                     parts.append(f"turn {turn_count + 1} of {max_turns} on this concept — {turns_left} left")
                 if is_stuck or is_plateau:
@@ -549,7 +573,8 @@ def build_quest_graph(checkpointer):
                 ),
             )
         history = messages_from_dicts(state.get("history") or [])
-        history.append(HumanMessage(content=state["user_input"]))
+        raw_answer = state["user_input"]
+        history.append(HumanMessage(content=f"<student_input>\n{raw_answer}\n</student_input>"))
 
         # Keep a rolling window of the last 4 scores on this concept so the
         # tutor steer can detect a stuck pattern (e.g., 2-3-2-3 plateau).
@@ -625,6 +650,7 @@ def build_quest_graph(checkpointer):
             )
             queries.set_session_report(conn, session_id, report.model_dump_json())
             queries.end_session(conn, session_id)
+            queries.prune_checkpoints(conn, session_id)
         return {
             "done": True,
             "session_report": report.model_dump(),

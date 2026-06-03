@@ -132,6 +132,7 @@ def finish_session(conn: sqlite3.Connection, session_id: str) -> SessionView:
         raise ValueError(f"Unknown session: {session_id}")
     if not row.get("ended_at"):
         queries.end_session(conn, session_id)
+        queries.prune_checkpoints(conn, session_id)
     try:
         topic_data = load_topic(row["topic"])
         display = topic_data.get("display_name") or row["topic"]

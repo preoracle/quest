@@ -95,28 +95,35 @@ def pick_next_concept(
     *,
     eval_counts: dict[str, int] | None = None,
     now: datetime | None = None,
+    max_difficulty: int = 3,
 ) -> dict | None:
     """Pick the weakest unmastered concept with satisfied prerequisites.
 
     Unmastered concepts are always eligible (SM-2 due dates apply only after
     mastery). Returns the concept row dict (id, name, ...) or None when every
-    concept in the topic is mastered.
+    eligible concept is mastered.
+
+    max_difficulty caps which concepts are eligible — new users start at 1 so
+    they always see foundational concepts before mechanism/tradeoff ones.
     """
     eval_counts = eval_counts or {}
     ordered = topological_concept_ids(concepts, topic_id)
     by_id = {c["id"]: c for c in concepts}
 
     for cid in ordered:
+        concept = by_id[cid]
+        if int(concept.get("difficulty") or 1) > max_difficulty:
+            continue
         score, n = _score_and_evals(cid, mastery_scores, eval_counts)
         if is_concept_mastered(score, n):
             continue
-        prereqs = _parse_prereqs(by_id[cid].get("prerequisites_json"), topic_id)
+        prereqs = _parse_prereqs(concept.get("prerequisites_json"), topic_id)
         if not all(
             is_concept_mastered(*_score_and_evals(p, mastery_scores, eval_counts))
             for p in prereqs
         ):
             continue
-        return by_id[cid]
+        return concept
     return None
 
 
