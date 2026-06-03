@@ -22,3 +22,6 @@ frontend/dist/
 stitch_quest_socratic_ai
 *.out
 docs/TEARDOWN.md
+# VAPID keys (do not commit)
+private_key.pem
+public_key.pem

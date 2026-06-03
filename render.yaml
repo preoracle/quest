@@ -124,3 +124,15 @@ services:
           name: quest-api
           type: web
           property: host     # Render fills in https://quest-api.onrender.com
+      - key: VITE_VAPID_PUBLIC_KEY
+        sync: false          # generate with: vapid --applicationServerKey
+
+# ── Cron jobs ───────────────────────────────────────────────────────────────
+# Run daily streak nudge at 14:30 UTC (≈ 8 PM IST)
+crons:
+  - name: streak-nudge
+    schedule: "30 14 * * *"
+    command: >
+      curl -s -X POST
+      -H "X-Internal-Secret: $INTERNAL_SECRET"
+      https://quest-api.onrender.com/internal/streak-nudge
