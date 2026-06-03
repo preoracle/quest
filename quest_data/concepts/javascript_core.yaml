@@ -3,55 +3,83 @@ display_name: JavaScript Core
 concepts:
   - id: execution_context
     name: Execution Context and Call Stack
-    description: What an execution context is (variable environment, outer environment reference, `this` binding), how the call stack grows and shrinks as functions are called and return, and what happens when the stack overflows.
+    description: >
+      What an execution context is (variable environment, outer environment
+      reference, "this" binding), how the call stack grows and shrinks as
+      functions are called and return, and what happens when the stack overflows.
     prerequisites: []
     difficulty: 1
 
   - id: scope_chain
     name: Scope Chain and Lexical Scope
-    description: How JavaScript resolves variable names by walking up the lexical scope chain, what lexical scope means (determined at write time, not call time), and why a function defined inside another function can access the outer function's variables even after the outer function has returned.
+    description: >
+      How JavaScript resolves variable names by walking up the lexical scope
+      chain, what lexical scope means (determined at write time, not call time),
+      and why a function defined inside another function can access the outer
+      function's variables even after the outer function has returned.
     prerequisites:
       - execution_context
     difficulty: 2
 
   - id: closures
     name: Closures
-    description: Why a closure captures a reference to the outer scope (not a copy of its values), what stale closure bugs look like in practice, and how closures are used to create private state or module patterns in JavaScript.
+    description: >
+      Why a closure captures a reference to the outer scope (not a copy of its
+      values), what stale closure bugs look like in practice, and how closures
+      are used to create private state or module patterns in JavaScript.
     prerequisites:
       - scope_chain
     difficulty: 2
 
   - id: this_binding
-    name: `this` Binding Rules
-    description: The four rules that determine what `this` refers to (default, implicit, explicit via call/apply/bind, new), which rule takes precedence when multiple apply, and why arrow functions have no own `this` binding.
+    name: this Binding Rules
+    description: >
+      The four rules that determine what "this" refers to (default, implicit,
+      explicit via call/apply/bind, new), which rule takes precedence when
+      multiple apply, and why arrow functions have no own "this" binding.
     prerequisites:
       - execution_context
     difficulty: 2
 
   - id: prototypes
     name: Prototype Chain
-    description: How JavaScript property lookup walks the prototype chain via `__proto__`, what `Object.create()` and `class` syntax both produce at the prototype level, and what happens when a property is not found at the end of the chain.
+    description: >
+      How JavaScript property lookup walks the prototype chain via __proto__,
+      what Object.create() and class syntax both produce at the prototype level,
+      and what happens when a property is not found at the end of the chain.
     prerequisites:
       - execution_context
     difficulty: 2
 
   - id: event_loop
     name: Event Loop and Task Queues
-    description: How the call stack, microtask queue (promises, queueMicrotask), and macrotask queue (setTimeout, I/O) interact — specifically the order in which tasks drain and why a resolved Promise callback runs before a setTimeout(fn, 0) callback.
+    description: >
+      How the call stack, microtask queue (promises, queueMicrotask), and
+      macrotask queue (setTimeout, I/O) interact — specifically the order in
+      which tasks drain and why a resolved Promise callback runs before a
+      setTimeout(fn, 0) callback.
     prerequisites:
       - execution_context
     difficulty: 2
 
   - id: promises
     name: Promises and Microtasks
-    description: The three states of a Promise (pending, fulfilled, rejected), how `.then()` chains work when handlers return another Promise, what Promise.all vs Promise.race vs Promise.allSettled each guarantee, and how an unhandled rejection propagates.
+    description: >
+      The three states of a Promise (pending, fulfilled, rejected), how .then()
+      chains work when handlers return another Promise, what Promise.all vs
+      Promise.race vs Promise.allSettled each guarantee, and how an unhandled
+      rejection propagates.
     prerequisites:
       - event_loop
     difficulty: 3
 
   - id: async_await
     name: async/await and Error Handling
-    description: How `async/await` desugars to Promise chains, why `await` only suspends the current async function (not the event loop), what happens if you forget to await a Promise, and how try/catch inside an async function catches rejected promises.
+    description: >
+      How async/await desugars to Promise chains, why await only suspends the
+      current async function (not the event loop), what happens if you forget to
+      await a Promise, and how try/catch inside an async function catches
+      rejected promises.
     prerequisites:
       - promises
     difficulty: 3
