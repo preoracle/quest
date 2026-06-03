@@ -3,6 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { setToken, fetchTopics, fetchDue, fetchProgressSummary } from "@/api/client";
 import { queryClient } from "@/lib/queryClient";
+import { analytics } from "@/lib/analytics";
 
 interface AuthContextValue {
   session: Session | null;
@@ -46,8 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(data.session);
       setToken(data.session?.access_token ?? null);
       setLoading(false);
-      // If a session already exists on page load, warm the cache immediately
-      if (data.session?.access_token) {
+      if (data.session?.user) {
+        analytics.identify(data.session.user.id, data.session.user.user_metadata?.full_name);
         prefetchDashboard();
       }
     });
@@ -57,8 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(s?.access_token ?? null);
       // Flush cache so queries re-run with the new auth token
       queryClient.invalidateQueries();
-      // Re-warm dashboard data with new credentials
-      if (s?.access_token) {
+      if (s?.user) {
+        analytics.identify(s.user.id, s.user.user_metadata?.full_name);
         prefetchDashboard();
       }
     });
