@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 
 from core.llm_errors import raise_llm_http_error
+from api.push import send_push
 
 from api.schemas import (
     BaselineAnswerRequest,
@@ -36,7 +37,7 @@ from api.schemas import (
 from core.baseline_api import BaselineView, start_baseline, submit_baseline_answer
 from core.session_api import EvaluationView, SessionView, finish_session, get_session_view, re_evaluate_last_turn, start_session, submit_turn
 from core.topic_catalog import list_topic_catalog
-from core.topic_generator import generate_topic_payload, write_topic_yaml
+from core.topic_generator import find_existing_topic, generate_topic_payload, write_topic_yaml
 from core.topic_graph import TopicGraph, get_topic_graph, topic_mastery_summary
 from core.topic_lifecycle import (
     TopicLifecycleError,
@@ -318,7 +319,25 @@ def read_progress_summary(
 
 @router.post("/topics/generate", response_model=TopicCreatedResponse)
 def generate_topic(body: GenerateTopicRequest) -> TopicCreatedResponse:
-    """Generate a concept map from a learning goal (LLM)."""
+    """Generate a concept map from a learning goal (LLM).
+
+    Before calling the full generator, runs a cheap dedup check to see if a
+    semantically matching topic already exists — if so, returns that instead.
+    """
+    if not body.force:
+        existing_slug = find_existing_topic(body.goal)
+        if existing_slug:
+            from core.topics import load_topic  # noqa: PLC0415
+            try:
+                topic_data = load_topic(existing_slug)
+                return TopicCreatedResponse(
+                    topic_id=existing_slug,
+                    display_name=topic_data.get("display_name", existing_slug.replace("_", " ").title()),
+                    concept_count=len(topic_data.get("concepts") or []),
+                    path="(existing)",
+                )
+            except FileNotFoundError:
+                pass  # topic listed but not loadable — fall through to generation
     try:
         data = generate_topic_payload(body.goal)
         path = write_topic_yaml(data, force=body.force)
@@ -608,3 +627,76 @@ def read_mastery(
             for r in rows
         ],
     )
+
+
+# ── Web Push Subscriptions ─────────────────────────────────────────────────────
+
+@router.post("/me/push-subscription", status_code=204)
+def save_push_subscription(
+    payload: dict,
+    current_user: str = Depends(get_uid),
+) -> None:
+    """Save or update a Web Push subscription for the current user."""
+    endpoint = payload.get("endpoint", "")
+    keys = payload.get("keys", {})
+    p256dh = keys.get("p256dh", "")
+    auth = keys.get("auth", "")
+    if not (endpoint and p256dh and auth):
+        raise HTTPException(status_code=422, detail="Invalid subscription object")
+    with queries.get_connection() as conn:
+        queries.upsert_push_subscription(conn, current_user, endpoint, p256dh, auth)
+
+
+@router.delete("/me/push-subscription", status_code=204)
+def remove_push_subscription(
+    payload: dict,
+    current_user: str = Depends(get_uid),
+) -> None:
+    """Remove a push subscription (e.g. user disabled notifications)."""
+    endpoint = payload.get("endpoint", "")
+    if not endpoint:
+        raise HTTPException(status_code=422, detail="endpoint required")
+    with queries.get_connection() as conn:
+        queries.delete_push_subscription(conn, current_user, endpoint)
+
+
+# ── Internal cron: streak-at-risk nudge ───────────────────────────────────────
+
+@router.post("/internal/streak-nudge", status_code=200)
+def streak_nudge_route(request: Request) -> dict:
+    """Send push notifications to users whose streak is at risk today.
+    Protected by INTERNAL_SECRET header. Called by Render cron at 14:30 UTC daily.
+    """
+    secret = os.environ.get("INTERNAL_SECRET", "")
+    if secret and request.headers.get("X-Internal-Secret") != secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    with queries.get_connection() as conn:
+        at_risk = queries.get_streak_at_risk_users(conn)
+        total_sent = 0
+        for user in at_risk:
+            subs = queries.get_push_subscriptions(conn, user["user_id"])
+            if not subs:
+                continue
+            streak = user["streak"]
+            sent = send_push(
+                subs,
+                title="Don't break your streak 🔥",
+                body=f"Your {streak}-day streak ends in a few hours. Keep it going!",
+                url="/dashboard",
+            )
+            total_sent += sent
+
+    return {"users_at_risk": len(at_risk), "notifications_sent": total_sent}
+
+
+# ── Decaying concepts (fading mastery) ────────────────────────────────────────
+
+@router.get("/users/me/decaying", response_model=list)
+def get_decaying_route(
+    horizon_days: int = Query(default=2, ge=1, le=30),
+    current_user: str = Depends(get_uid),
+) -> list:
+    """Return up to 10 concepts whose review is due within horizon_days days, most urgent first."""
+    with queries.get_connection() as conn:
+        return queries.get_decaying_concepts(conn, current_user, horizon_days=horizon_days)

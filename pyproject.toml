@@ -29,6 +29,8 @@ dependencies = [
     "rich>=13.0.0",
     "questionary>=2.0.0",
     "psycopg[pool]>=3.3.4",
+    "sentry-sdk[fastapi]>=2.61.1",
+    "pywebpush>=2.3.0",
 ]
 
 [project.optional-dependencies]

@@ -8,12 +8,25 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from api.routes import router
 from db import queries
+
+_dsn = os.environ.get("SENTRY_DSN", "")
+if _dsn:
+    sentry_sdk.init(
+        dsn=_dsn,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        traces_sample_rate=0.1,
+        environment=os.environ.get("ENV", "development"),
+        send_default_pii=True,
+    )
 
 _DEV_ORIGINS = [
     "http://127.0.0.1:5173",
