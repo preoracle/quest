@@ -1,67 +1,76 @@
 topic: model_context_protocol
 display_name: Model Context Protocol (MCP)
 concepts:
-- id: llm_tool_use
-  name: LLM Tool Use
-  description: Covers how large language models invoke external tools or functions
-    during inference, including the request/response pattern and why tool use exists.
-  prerequisites: []
-- id: mcp_overview
-  name: MCP Overview
-  description: Covers what the Model Context Protocol is, the problem it solves (fragmented
-    LLM-to-tool integrations), and its open-standard goals.
-  prerequisites:
-  - llm_tool_use
-- id: mcp_architecture
-  name: MCP Architecture
-  description: 'Covers the three-role architecture of MCP: Host (LLM application),
-    Client (protocol connector), and Server (capability provider), and how they relate.'
-  prerequisites:
-  - mcp_overview
-- id: mcp_primitives
-  name: MCP Primitives
-  description: Covers the core capability primitives exposed by MCP servers — Tools,
-    Resources, and Prompts — including their distinct purposes and control models.
-  prerequisites:
-  - mcp_architecture
-- id: mcp_transport
-  name: MCP Transport Layer
-  description: Covers the communication transports MCP supports (stdio and HTTP/SSE),
-    the JSON-RPC 2.0 message format, and the lifecycle of a connection.
-  prerequisites:
-  - mcp_architecture
-- id: mcp_sampling
-  name: Sampling & Agentic Loops
-  description: Covers MCP's sampling primitive that allows servers to request LLM
-    completions from the host, enabling multi-step agentic workflows.
-  prerequisites:
-  - mcp_primitives
-  - mcp_transport
-- id: mcp_security
-  name: MCP Security Model
-  description: Covers trust boundaries between host, client, and server; user consent
-    requirements; and risks such as prompt injection via malicious servers.
-  prerequisites:
-  - mcp_primitives
-  - mcp_transport
-- id: mcp_server_building
-  name: Building an MCP Server
-  description: Covers the practical steps to implement a compliant MCP server using
-    an SDK, expose tools/resources, and handle capability negotiation.
-  prerequisites:
-  - mcp_primitives
-  - mcp_transport
-- id: mcp_client_integration
-  name: Integrating an MCP Client
-  description: Covers how a host application embeds an MCP client, discovers server
-    capabilities, and routes tool calls within an LLM conversation loop.
-  prerequisites:
-  - mcp_server_building
-  - mcp_sampling
-- id: mcp_ecosystem
-  name: MCP Ecosystem & Pitfalls
-  description: Covers the current landscape of MCP-compatible hosts and servers, versioning/compatibility
-    concerns, and common implementation mistakes.
-  prerequisites:
-  - mcp_client_integration
-  - mcp_security
+  - id: llm_tool_use
+    name: LLM Tool Use
+    description: How large language models invoke external tools during inference — the request/response pattern, why tool use exists, and what the model actually outputs when it decides to call a tool.
+    prerequisites: []
+    difficulty: 1
+
+  - id: mcp_overview
+    name: MCP Overview
+    description: What the Model Context Protocol is, the problem it solves (fragmented LLM-to-tool integrations), and its open-standard goals.
+    prerequisites:
+      - llm_tool_use
+    difficulty: 1
+
+  - id: mcp_architecture
+    name: MCP Architecture
+    description: 'The three-role architecture of MCP: Host (LLM application), Client (protocol connector), and Server (capability provider) — what each owns and how they communicate.'
+    prerequisites:
+      - mcp_overview
+    difficulty: 2
+
+  - id: mcp_primitives
+    name: MCP Primitives
+    description: The core capability primitives exposed by MCP servers — Tools, Resources, and Prompts — including their distinct purposes and who controls each.
+    prerequisites:
+      - mcp_architecture
+    difficulty: 2
+
+  - id: mcp_transport
+    name: MCP Transport Layer
+    description: The communication transports MCP supports (stdio and HTTP/SSE), the JSON-RPC 2.0 message format, and the lifecycle of a connection from init to shutdown.
+    prerequisites:
+      - mcp_architecture
+    difficulty: 2
+
+  - id: mcp_sampling
+    name: Sampling & Agentic Loops
+    description: MCP's sampling primitive that allows servers to request LLM completions from the host — what this enables in multi-step agentic workflows and what trust boundary it crosses.
+    prerequisites:
+      - mcp_primitives
+      - mcp_transport
+    difficulty: 3
+
+  - id: mcp_security
+    name: MCP Security Model
+    description: Trust boundaries between host, client, and server; user consent requirements; and risks such as prompt injection via malicious MCP servers.
+    prerequisites:
+      - mcp_primitives
+      - mcp_transport
+    difficulty: 3
+
+  - id: mcp_server_building
+    name: Building an MCP Server
+    description: The practical steps to implement a compliant MCP server — exposing tools/resources, handling capability negotiation, and what the SDK abstracts vs what you must implement.
+    prerequisites:
+      - mcp_primitives
+      - mcp_transport
+    difficulty: 3
+
+  - id: mcp_client_integration
+    name: Integrating an MCP Client
+    description: How a host application embeds an MCP client, discovers server capabilities at runtime, and routes tool calls within an LLM conversation loop.
+    prerequisites:
+      - mcp_server_building
+      - mcp_sampling
+    difficulty: 3
+
+  - id: mcp_ecosystem
+    name: MCP Ecosystem & Pitfalls
+    description: The current landscape of MCP-compatible hosts and servers, versioning and compatibility concerns, and common implementation mistakes that break real deployments.
+    prerequisites:
+      - mcp_client_integration
+      - mcp_security
+    difficulty: 3

@@ -12,7 +12,7 @@ Your job: propose a small directed acyclic graph of concepts for this goal.
 3. display_name is a human title (short title case).
    Examples: "React Hooks", "Supply and Demand", "CRISPR Gene Editing".
 4. Include between 5 and 10 concepts (inclusive).
-5. Each concept has: id (slug, unique), name (short), description (one sentence, what the tutor probes), prerequisites (list of local concept ids only, may be empty).
+5. Each concept has: id (slug, unique), name (short), description (one sentence, what the tutor probes), prerequisites (list of local concept ids only, may be empty), difficulty (integer 1, 2, or 3 — see below).
 6. No cycles. Prereqs must point to ids that exist and only to "earlier" ideas (foundational first).
 7. Descriptions are for the evaluator — factual scope, not lesson text. Do not paste trivia that gives away answers.
 8. Prefer a logical teaching order: primitives first, then composition, then pitfalls or applications.
@@ -34,5 +34,14 @@ Bad (too vague to guide scoring):
 
 Good (specific enough to guide scoring):
 "The difference between local component state and shared/external state, and when each is appropriate."
+
+## Difficulty levels
+
+Every concept must have a difficulty field (1, 2, or 3):
+- 1 = foundational / definitional: "What is X?" questions. What the student must be able to name or define. Concepts with no prerequisites should almost always be difficulty 1.
+- 2 = mechanism / application: How X works internally, cause-and-effect chains, what happens step by step. Most middle concepts are difficulty 2.
+- 3 = edge cases / tradeoffs / synthesis: When X breaks down, X vs Y, system-level implications, design decisions. Terminal nodes (nothing depends on them) are often difficulty 3.
+
+Rule: a concept cannot have a lower difficulty than the concepts it depends on.
 
 Return exactly one structured response with the topic map.

@@ -1,33 +1,45 @@
 topic: evaluation_evals
 display_name: Evaluation (Evals)
-
 concepts:
   - id: eval_goals_and_slices
     name: Eval goals and slices
-    description: What “good” means per task; slicing by intent, language, or risk class.
+    description: What "good" means per task; slicing by intent, language, or risk class.
     prerequisites: []
+    difficulty: 1
 
   - id: golden_datasets
     name: Golden datasets
     description: Curated input/expected pairs; coverage, staleness, and label quality.
-    prerequisites: [eval_goals_and_slices]
+    prerequisites:
+      - eval_goals_and_slices
+    difficulty: 2
 
   - id: automated_metrics
     name: Automated metrics
     description: Exact match, BLEU/ROUGE limits, LLM-as-judge; bias and variance in judges.
-    prerequisites: [golden_datasets]
+    prerequisites:
+      - golden_datasets
+    difficulty: 2
 
   - id: human_evaluation
     name: Human evaluation
     description: Rubrics, inter-annotator agreement, and when humans override automation.
-    prerequisites: [eval_goals_and_slices]
+    prerequisites:
+      - eval_goals_and_slices
+    difficulty: 2
 
   - id: regression_and_ci_evals
     name: Regression and CI evals
     description: Running evals on every prompt/model change; gates, flakes, and baselines.
-    prerequisites: [automated_metrics, golden_datasets]
+    prerequisites:
+      - automated_metrics
+      - golden_datasets
+    difficulty: 3
 
   - id: online_vs_offline_eval
     name: Online vs offline eval
     description: Pre-deploy suites vs production signals (thumbs, tasks completed, safety incidents).
-    prerequisites: [regression_and_ci_evals, human_evaluation]
+    prerequisites:
+      - regression_and_ci_evals
+      - human_evaluation
+    difficulty: 3

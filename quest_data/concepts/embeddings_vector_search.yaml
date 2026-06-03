@@ -1,33 +1,45 @@
 topic: embeddings_vector_search
 display_name: Embeddings & Vector Search
-
 concepts:
   - id: embedding_representation
     name: Embedding representation
     description: Text → dense vectors; semantic similarity as geometry; model choice and dimensionality.
     prerequisites: []
+    difficulty: 1
 
   - id: similarity_metrics
     name: Similarity metrics
     description: Cosine, dot product, L2; normalization and when rankings change.
-    prerequisites: [embedding_representation]
+    prerequisites:
+      - embedding_representation
+    difficulty: 2
 
   - id: vector_indexes
     name: Vector indexes
     description: Flat vs ANN (HNSW, IVF); recall–latency–memory tradeoffs at scale.
-    prerequisites: [similarity_metrics]
+    prerequisites:
+      - similarity_metrics
+    difficulty: 2
 
   - id: chunking_for_search
     name: Chunking for search
     description: Chunk boundaries vs query length; parent–child docs and metadata filters.
-    prerequisites: [embedding_representation]
+    prerequisites:
+      - embedding_representation
+    difficulty: 2
 
   - id: hybrid_search
     name: Hybrid search
     description: Combining dense vectors with BM25/keywords; fusion and reranking.
-    prerequisites: [vector_indexes, chunking_for_search]
+    prerequisites:
+      - vector_indexes
+      - chunking_for_search
+    difficulty: 3
 
   - id: embedding_evaluation
     name: Embedding evaluation
     description: Recall@k on labeled sets; domain drift and when to re-embed or fine-tune.
-    prerequisites: [hybrid_search, similarity_metrics]
+    prerequisites:
+      - hybrid_search
+      - similarity_metrics
+    difficulty: 3

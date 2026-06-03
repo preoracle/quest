@@ -1,33 +1,44 @@
 topic: rag_pipeline
 display_name: RAG Pipeline
-
 concepts:
   - id: retrieval_vs_generation
     name: Retrieval vs generation
-    description: What each stage owns; why RAG splits “find evidence” from “compose an answer.”
+    description: What each stage owns; why RAG splits "find evidence" from "compose an answer."
     prerequisites: []
+    difficulty: 1
 
   - id: document_chunking
     name: Document chunking
     description: Chunk size, overlap, and structure-aware splits; tradeoffs for recall and context cost.
     prerequisites: []
+    difficulty: 1
 
   - id: dense_retrieval
     name: Dense retrieval
-    description: Embedding queries and passages; top-k similarity; what “relevant” means in vector space.
+    description: Embedding queries and passages; top-k similarity; what "relevant" means in vector space.
     prerequisites: []
+    difficulty: 2
 
   - id: context_assembly
     name: Context assembly
     description: Packing retrieved chunks into the prompt; ordering, deduplication, and token budget.
-    prerequisites: [document_chunking, dense_retrieval]
+    prerequisites:
+      - document_chunking
+      - dense_retrieval
+    difficulty: 2
 
   - id: grounding_and_hallucination
     name: Grounding and hallucination
     description: When answers must cite retrieved text; failure modes when retrieval misses or the model invents.
-    prerequisites: [retrieval_vs_generation, context_assembly]
+    prerequisites:
+      - retrieval_vs_generation
+      - context_assembly
+    difficulty: 3
 
   - id: rag_pipeline_end_to_end
     name: RAG pipeline end-to-end
     description: Ingest → index → retrieve → augment prompt → generate → optional rerank or cite step.
-    prerequisites: [context_assembly, grounding_and_hallucination]
+    prerequisites:
+      - context_assembly
+      - grounding_and_hallucination
+    difficulty: 3
