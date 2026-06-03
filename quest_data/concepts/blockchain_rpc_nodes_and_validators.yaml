@@ -1,0 +1,53 @@
+topic: blockchain_rpc_nodes_and_validators
+display_name: Blockchain RPC Nodes and Validators
+concepts:
+  - id: blockchain_basics
+    name: Blockchain Basics
+    description: The fundamental components of a blockchain — blocks, transactions, chain structure, cryptographic linking — and why immutability matters.
+    prerequisites: []
+    difficulty: 1
+
+  - id: rpc_nodes
+    name: RPC Nodes
+    description: The role of RPC nodes as the read/write interface to the blockchain — what requests they serve, how they differ from full nodes, and what data they expose.
+    prerequisites:
+      - blockchain_basics
+    difficulty: 2
+
+  - id: validators
+    name: Validators
+    description: What validators do in a proof-of-stake network — block proposal, attestation, slashing conditions — and what economic stake they put at risk.
+    prerequisites:
+      - blockchain_basics
+    difficulty: 2
+
+  - id: node_types
+    name: Node Types
+    description: The differences between full nodes, light nodes, archive nodes, and RPC nodes — what data each stores, what queries each can answer, and the storage/bandwidth cost of each.
+    prerequisites:
+      - rpc_nodes
+      - validators
+    difficulty: 2
+
+  - id: consensus_mechanisms
+    name: Consensus Mechanisms
+    description: How proof-of-work and proof-of-stake achieve agreement among nodes — specifically what prevents a minority of validators from rewriting history and what the "finality" guarantee means.
+    prerequisites:
+      - validators
+    difficulty: 2
+
+  - id: node_configuration
+    name: Node Configuration
+    description: The operational choices in setting up an RPC node or validator — client software, hardware requirements, peering, and monitoring — and which misconfigurations lead to downtime or slashing.
+    prerequisites:
+      - rpc_nodes
+      - validators
+    difficulty: 3
+
+  - id: network_architecture
+    name: Network Architecture
+    description: How nodes discover peers, propagate transactions and blocks through gossip, handle forks, and how RPC nodes stay in sync with the tip of the chain.
+    prerequisites:
+      - node_types
+      - consensus_mechanisms
+    difficulty: 3

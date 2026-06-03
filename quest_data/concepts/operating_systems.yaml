@@ -1,0 +1,58 @@
+topic: operating_systems
+display_name: Operating Systems
+concepts:
+  - id: process_vs_thread
+    name: Process vs Thread
+    description: What a process owns exclusively (virtual address space, file descriptors, PID) versus what threads within a process share (heap, code, file handles) and what each thread owns privately (stack, registers, thread ID). What happens to threads when the parent process exits.
+    prerequisites: []
+    difficulty: 1
+
+  - id: context_switching
+    name: Context Switching
+    description: What state the OS must save and restore when switching from one process or thread to another. Why context switches are expensive, what triggers them, and why switching between threads in the same process is cheaper than switching between processes.
+    prerequisites:
+      - process_vs_thread
+    difficulty: 2
+
+  - id: scheduling_algorithms
+    name: CPU Scheduling Algorithms
+    description: The tradeoffs between FCFS, SJF, Round Robin, and Priority scheduling — specifically which metric each optimizes (throughput, response time, fairness, starvation risk) and under what workload each performs worst. What preemptive vs non-preemptive means in practice.
+    prerequisites:
+      - context_switching
+    difficulty: 2
+
+  - id: deadlock_conditions
+    name: Deadlock Conditions
+    description: The four necessary conditions for deadlock (mutual exclusion, hold-and-wait, no preemption, circular wait) and why all four must hold simultaneously. How to identify a circular wait from a resource allocation graph.
+    prerequisites:
+      - process_vs_thread
+    difficulty: 2
+
+  - id: memory_management
+    name: Memory Management
+    description: How the OS divides physical RAM among processes using techniques like base/limit registers, segmentation, and paging. What a page fault is, what the OS does when one occurs, and why processes see a larger address space than physical RAM exists.
+    prerequisites:
+      - process_vs_thread
+    difficulty: 2
+
+  - id: virtual_memory_paging
+    name: Virtual Memory and Paging
+    description: How page tables translate virtual addresses to physical frames, what TLB is and why it exists, what happens on a TLB miss, and the tradeoffs between page replacement policies (LRU, FIFO, Clock). Why thrashing occurs and what causes it.
+    prerequisites:
+      - memory_management
+    difficulty: 3
+
+  - id: ipc_mechanisms
+    name: IPC Mechanisms
+    description: The differences between pipes, message queues, shared memory, and sockets for inter-process communication — specifically which is fastest, which crosses machine boundaries, and what synchronization each one requires the programmer to handle explicitly.
+    prerequisites:
+      - process_vs_thread
+    difficulty: 3
+
+  - id: deadlock_prevention
+    name: Deadlock Prevention and Recovery
+    description: Strategies to prevent, avoid, or recover from deadlock: breaking one of the four conditions, the Banker's algorithm (safe state detection), and recovery via process termination or resource preemption. Why prevention is often impractical in real systems.
+    prerequisites:
+      - deadlock_conditions
+      - scheduling_algorithms
+    difficulty: 3

@@ -1,0 +1,59 @@
+topic: computer_networks
+display_name: Computer Networks
+concepts:
+  - id: osi_vs_tcp_ip
+    name: OSI vs TCP/IP Model
+    description: What each layer in the TCP/IP model is responsible for (application, transport, internet, link) and which OSI layers map to each. Why the layering abstraction exists and what "encapsulation" means as data moves down the stack.
+    prerequisites: []
+    difficulty: 1
+
+  - id: tcp_handshake
+    name: TCP Three-Way Handshake
+    description: The exact sequence of SYN, SYN-ACK, ACK messages during TCP connection establishment and what state each side is in at each step. What each packet contains (flags, sequence numbers) and why three messages are the minimum needed to establish a reliable connection.
+    prerequisites:
+      - osi_vs_tcp_ip
+    difficulty: 2
+
+  - id: tcp_vs_udp
+    name: TCP vs UDP
+    description: The specific guarantees TCP provides (ordering, reliability, flow control, congestion control) that UDP omits, the cost of each guarantee in latency and overhead, and why protocols like DNS, video streaming, or games choose UDP despite unreliability.
+    prerequisites:
+      - tcp_handshake
+    difficulty: 2
+
+  - id: http_https_tls
+    name: HTTP, HTTPS, and TLS
+    description: What happens in a TLS handshake before HTTP data flows — specifically certificate exchange, cipher negotiation, and session key derivation. Why HTTPS adds latency and what happens if a certificate is invalid or expired.
+    prerequisites:
+      - tcp_handshake
+    difficulty: 2
+
+  - id: dns_resolution
+    name: DNS Resolution
+    description: The recursive vs iterative resolution chain (resolver → root → TLD → authoritative nameserver), what each step returns, what TTL controls, and what a DNS cache poisoning attack exploits. What happens when you type a URL in a browser before TCP connects.
+    prerequisites:
+      - osi_vs_tcp_ip
+    difficulty: 2
+
+  - id: http2_http3
+    name: HTTP/2 and HTTP/3
+    description: How HTTP/2 multiplexing eliminates head-of-line blocking at the application layer, why HTTP/3 moved to QUIC over UDP to eliminate head-of-line blocking at the transport layer, and the tradeoff each version makes between complexity and latency.
+    prerequisites:
+      - http_https_tls
+      - tcp_vs_udp
+    difficulty: 3
+
+  - id: nat_and_routing
+    name: NAT and Routing
+    description: How NAT allows multiple private IPs to share one public IP using port mapping, what a routing table is and how a router decides which interface to forward a packet to, and why NAT breaks end-to-end connectivity for inbound connections.
+    prerequisites:
+      - osi_vs_tcp_ip
+    difficulty: 3
+
+  - id: socket_programming
+    name: Sockets and Connection State
+    description: The TCP socket lifecycle (LISTEN, SYN_SENT, ESTABLISHED, TIME_WAIT, CLOSE_WAIT), what TIME_WAIT prevents and why it lingers, the difference between a server socket and a connected socket, and what happens at the OS level when a socket is closed.
+    prerequisites:
+      - tcp_vs_udp
+      - nat_and_routing
+    difficulty: 3

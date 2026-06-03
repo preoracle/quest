@@ -1,0 +1,51 @@
+topic: system_design_basics
+display_name: System Design Basics
+concepts:
+  - id: cap_theorem
+    name: CAP Theorem
+    description: What Consistency, Availability, and Partition Tolerance mean in a distributed system, why a network partition forces a choice between C and A (not between all three), and which real databases choose CP vs AP and what that means for the application using them.
+    prerequisites: []
+    difficulty: 1
+
+  - id: load_balancing
+    name: Load Balancing
+    description: How a load balancer distributes requests across server replicas, the difference between L4 and L7 load balancing, what sticky sessions are and when they're necessary, and what happens to in-flight requests when a backend server fails.
+    prerequisites:
+      - cap_theorem
+    difficulty: 2
+
+  - id: caching_strategies
+    name: Caching Strategies
+    description: The difference between write-through, write-behind, and cache-aside patterns — specifically which one can serve stale data, which has the strongest consistency guarantee, and what cache invalidation strategies exist when the underlying data changes.
+    prerequisites:
+      - cap_theorem
+    difficulty: 2
+
+  - id: rate_limiting
+    name: Rate Limiting
+    description: How token bucket and leaky bucket algorithms enforce rate limits, the difference between per-user and per-IP limiting, where rate limiting must live in a distributed system (not per-server), and what happens to a request that exceeds the limit.
+    prerequisites:
+      - load_balancing
+    difficulty: 2
+
+  - id: cdn
+    name: CDN and Edge Caching
+    description: How a CDN serves content from edge nodes close to users, what cache-control headers control TTL at the CDN vs browser, what cache invalidation looks like for CDN-served content, and why a CDN cannot easily serve personalized or real-time content.
+    prerequisites:
+      - caching_strategies
+    difficulty: 2
+
+  - id: message_queues
+    name: Message Queues and Async Processing
+    description: Why a message queue decouples producers from consumers, what at-least-once vs exactly-once delivery guarantees mean and why exactly-once is expensive, what happens to messages when a consumer crashes mid-processing, and when to use a queue vs a synchronous API call.
+    prerequisites:
+      - load_balancing
+    difficulty: 3
+
+  - id: database_sharding
+    name: Sharding and Replication
+    description: The difference between read replicas (scaling reads, sync vs async replication lag) and horizontal sharding (scaling writes, partition key selection), why cross-shard queries are expensive, and what failure scenarios arise when a shard or replica goes down.
+    prerequisites:
+      - cap_theorem
+      - caching_strategies
+    difficulty: 3

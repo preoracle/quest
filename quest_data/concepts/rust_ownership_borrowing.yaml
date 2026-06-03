@@ -1,0 +1,37 @@
+topic: rust_ownership_borrowing
+display_name: Rust Ownership and Borrowing
+concepts:
+  - id: ownership
+    name: Ownership
+    description: What it means for Rust to have ownership of a value; what happens when a value is moved vs copied.
+    prerequisites: []
+    difficulty: 1
+
+  - id: borrowing
+    name: Borrowing
+    description: How Rust allows borrowing values without taking ownership; the rules the borrow checker enforces (at most one mutable borrow or any number of shared borrows at a time).
+    prerequisites:
+      - ownership
+    difficulty: 2
+
+  - id: references
+    name: References
+    description: The difference between shared (&T) and mutable (&mut T) references; what dangling references are and why Rust's type system prevents them.
+    prerequisites:
+      - borrowing
+    difficulty: 2
+
+  - id: lifetime
+    name: Lifetimes
+    description: How Rust tracks the lifetime of references to ensure no reference outlives the data it points to; what lifetime annotations communicate to the compiler.
+    prerequisites:
+      - references
+    difficulty: 3
+
+  - id: smart_pointers
+    name: Smart Pointers
+    description: How Box, Rc, Arc, and RefCell manage ownership and borrowing at runtime; when each is necessary and what safety guarantees each gives up.
+    prerequisites:
+      - ownership
+      - lifetime
+    difficulty: 3

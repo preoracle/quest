@@ -1,0 +1,51 @@
+topic: database_fundamentals
+display_name: Database Fundamentals
+concepts:
+  - id: acid_properties
+    name: ACID Properties
+    description: What Atomicity, Consistency, Isolation, and Durability each guarantee and what failure scenario each one prevents. Which property is most expensive to implement and why. What "eventually consistent" means in contrast to full ACID.
+    prerequisites: []
+    difficulty: 1
+
+  - id: indexing
+    name: Indexing
+    description: How a B-tree index physically organizes data to speed up lookups, what makes a column a good index candidate, why adding an index slows writes, and when a query plan will ignore an index even if one exists (e.g. low cardinality, full-scan cheaper).
+    prerequisites:
+      - acid_properties
+    difficulty: 2
+
+  - id: normalization
+    name: Normalization
+    description: The data anomalies (insertion, update, deletion) that 1NF, 2NF, and 3NF each eliminate, what a functional dependency is, and when deliberate denormalization is the correct choice for performance.
+    prerequisites:
+      - acid_properties
+    difficulty: 2
+
+  - id: transactions_and_locks
+    name: Transactions and Locking
+    description: How row-level locks, shared locks, and exclusive locks interact during concurrent transactions, what a deadlock between two transactions looks like at the SQL level, and what isolation levels (READ COMMITTED, REPEATABLE READ, SERIALIZABLE) prevent and allow.
+    prerequisites:
+      - acid_properties
+    difficulty: 2
+
+  - id: query_optimization
+    name: Query Optimization
+    description: How a query planner chooses between a sequential scan and an index scan using statistics, what EXPLAIN output shows about join strategies (nested loop, hash join, merge join), and why a query with correct results can still be orders of magnitude slower than an equivalent rewrite.
+    prerequisites:
+      - indexing
+    difficulty: 3
+
+  - id: joins_and_execution
+    name: Join Types and Execution
+    description: The semantic difference between INNER, LEFT, RIGHT, and FULL OUTER joins, what NULL means in the result of an outer join, and how the database physically executes a join between two large tables (hash join vs nested loop tradeoffs by table size and index presence).
+    prerequisites:
+      - indexing
+      - normalization
+    difficulty: 3
+
+  - id: database_sharding
+    name: Database Sharding
+    description: How horizontal sharding distributes rows across nodes by shard key, why cross-shard joins and transactions are expensive, what happens when a shard key is poorly chosen (hotspot), and the tradeoff between sharding and read replicas for scaling reads vs writes.
+    prerequisites:
+      - transactions_and_locks
+    difficulty: 3
