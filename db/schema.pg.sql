@@ -4,7 +4,8 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  streak_recovery_used TEXT  -- stores 'YYYY-MM' of last recovery month used
 );
 
 CREATE TABLE IF NOT EXISTS concepts (
@@ -13,7 +14,8 @@ CREATE TABLE IF NOT EXISTS concepts (
   kind TEXT NOT NULL CHECK (kind IN ('topic', 'concept')),
   name TEXT NOT NULL,
   description TEXT,
-  prerequisites_json TEXT NOT NULL DEFAULT '[]'
+  prerequisites_json TEXT NOT NULL DEFAULT '[]',
+  difficulty SMALLINT NOT NULL DEFAULT 1 CHECK (difficulty IN (1, 2, 3))
 );
 
 CREATE TABLE IF NOT EXISTS mastery (
@@ -62,7 +64,8 @@ CREATE TABLE IF NOT EXISTS topic_metadata (
   pinned_at TEXT,
   tags_json TEXT NOT NULL DEFAULT '[]',
   user_created INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  dag_json JSONB
 );
 
 CREATE TABLE IF NOT EXISTS user_topics (
@@ -100,9 +103,46 @@ CREATE TABLE IF NOT EXISTS user_style (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint   TEXT NOT NULL,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, endpoint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_idx);
 CREATE INDEX IF NOT EXISTS idx_mastery_user ON mastery(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_topics_user ON user_topics(user_id);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_chain_created ON llm_calls(chain, created_at);
 CREATE INDEX IF NOT EXISTS idx_study_days_user ON study_days(user_id, study_date DESC);
+
+-- ── Row-Level Security ────────────────────────────────────────────────────────
+-- service_role (direct psycopg3 backend) bypasses RLS automatically.
+-- Policies govern PostgREST (anon / authenticated) access only.
+
+ALTER TABLE public.study_days ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "study_days_own" ON public.study_days;
+CREATE POLICY "study_days_own" ON public.study_days
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+ALTER TABLE public.user_style ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "user_style_own" ON public.user_style;
+CREATE POLICY "user_style_own" ON public.user_style
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+-- Internal / backend-only tables — no PostgREST access.
+ALTER TABLE public.llm_calls             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.checkpoint_migrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.checkpoints           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.checkpoint_blobs      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.checkpoint_writes     ENABLE ROW LEVEL SECURITY;

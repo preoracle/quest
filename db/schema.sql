@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS concepts (
   kind TEXT NOT NULL CHECK (kind IN ('topic', 'concept')),
   name TEXT NOT NULL,
   description TEXT,
-  prerequisites_json TEXT NOT NULL DEFAULT '[]'
+  prerequisites_json TEXT NOT NULL DEFAULT '[]',
+  difficulty INTEGER NOT NULL DEFAULT 1 CHECK (difficulty IN (1, 2, 3))
 );
 
 CREATE TABLE IF NOT EXISTS mastery (
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS topic_metadata (
   pinned_at TEXT,
   tags_json TEXT NOT NULL DEFAULT '[]',
   user_created INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  dag_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_topics (

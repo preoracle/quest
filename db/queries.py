@@ -17,11 +17,11 @@ _PG_SCHEMA_PATH = Path(__file__).resolve().parent / "schema.pg.sql"
 
 # Topics seeded for every new user on first login.
 DEFAULT_TOPICS: list[str] = [
-    "rag_pipeline",
-    "tool_calling_agents",
-    "embeddings_vector_search",
-    "model_context_protocol",
-    "memory_systems",
+    "computer_networks",
+    "operating_systems",
+    "javascript_core",
+    "database_fundamentals",
+    "system_design_basics",
 ]
 
 
@@ -58,6 +58,8 @@ def _migrate_schema(conn) -> None:
             "CREATE INDEX IF NOT EXISTS idx_study_days_user "
             "ON study_days(user_id, study_date DESC)"
         )
+        conn.execute("ALTER TABLE topic_metadata ADD COLUMN IF NOT EXISTS dag_json JSONB")
+        conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS difficulty SMALLINT NOT NULL DEFAULT 1 CHECK (difficulty IN (1, 2, 3))")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_style (
@@ -68,6 +70,23 @@ def _migrate_schema(conn) -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+              id         BIGSERIAL PRIMARY KEY,
+              user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              endpoint   TEXT NOT NULL,
+              auth       TEXT NOT NULL,
+              p256dh     TEXT NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE (user_id, endpoint)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)"
+        )
+        conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_recovery_used TEXT")
         conn.commit()
         return
 
@@ -104,10 +123,18 @@ def _migrate_schema(conn) -> None:
               pinned_at TEXT,
               tags_json TEXT NOT NULL DEFAULT '[]',
               user_created INTEGER NOT NULL DEFAULT 0,
-              updated_at TEXT NOT NULL
+              updated_at TEXT NOT NULL,
+              dag_json TEXT
             )
             """
         )
+    else:
+        tm_cols = {row["name"] for row in conn.execute("PRAGMA table_info(topic_metadata)").fetchall()}
+        if "dag_json" not in tm_cols:
+            conn.execute("ALTER TABLE topic_metadata ADD COLUMN dag_json TEXT")
+    concept_cols = {row["name"] for row in conn.execute("PRAGMA table_info(concepts)").fetchall()}
+    if "difficulty" not in concept_cols:
+        conn.execute("ALTER TABLE concepts ADD COLUMN difficulty INTEGER NOT NULL DEFAULT 1 CHECK (difficulty IN (1, 2, 3))")
     if "user_topics" not in tables:
         conn.execute(
             """
@@ -263,16 +290,19 @@ def upsert_topic_concepts(conn: sqlite3.Connection, topic_data: dict[str, Any]) 
         local_id = concept["id"]
         namespaced = namespace_concept_id(topic_id, local_id)
         prereqs = concept.get("prerequisites") or []
+        difficulty = int(concept.get("difficulty") or 1)
+        difficulty = max(1, min(3, difficulty))
         conn.execute(
             """
-            INSERT INTO concepts (id, topic, kind, name, description, prerequisites_json)
-            VALUES (?, ?, 'concept', ?, ?, ?)
+            INSERT INTO concepts (id, topic, kind, name, description, prerequisites_json, difficulty)
+            VALUES (?, ?, 'concept', ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 topic = excluded.topic,
                 kind = excluded.kind,
                 name = excluded.name,
                 description = excluded.description,
-                prerequisites_json = excluded.prerequisites_json
+                prerequisites_json = excluded.prerequisites_json,
+                difficulty = excluded.difficulty
             """,
             (
                 namespaced,
@@ -280,6 +310,7 @@ def upsert_topic_concepts(conn: sqlite3.Connection, topic_data: dict[str, Any]) 
                 concept.get("name", local_id),
                 concept.get("description"),
                 json.dumps(prereqs),
+                difficulty,
             ),
         )
         evaluator_concepts.append(
@@ -323,6 +354,24 @@ def end_session(conn: sqlite3.Connection, session_id: str) -> None:
         "UPDATE sessions SET ended_at = ? WHERE id = ?",
         (_utc_now(), session_id),
     )
+    conn.commit()
+
+
+def prune_checkpoints(conn, session_id: str) -> None:
+    """Delete LangGraph checkpoints for a completed session (Postgres only).
+
+    Checkpoints store full conversation history per turn (O(N²) growth).
+    Once a session ends, state is reconstructable from the turns table via
+    seed_state_from_turns(), so checkpoints can be safely deleted.
+    SQLite dev mode uses a separate file-based checkpointer and is unaffected.
+    """
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return
+    for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+        conn.execute(
+            f"DELETE FROM {table} WHERE thread_id = %s",  # noqa: S608
+            (session_id,),
+        )
     conn.commit()
 
 
@@ -1013,6 +1062,46 @@ def delete_topic_metadata(conn: sqlite3.Connection, topic_id: str) -> None:
     conn.commit()
 
 
+def upsert_topic_dag(conn, topic_id: str, dag: dict) -> None:
+    """Persist topic DAG JSON to DB so user-generated topics survive redeploys.
+
+    The YAML on disk is the canonical source; this is the fallback for when
+    Render's ephemeral filesystem loses the file after a redeploy.
+    """
+    dag_str = json.dumps(dag)
+    now = _utc_now()
+    if getattr(conn, "db_type", "sqlite") == "postgres":
+        conn.execute(
+            """
+            INSERT INTO topic_metadata (topic_id, tags_json, user_created, updated_at, dag_json)
+            VALUES (%s, '[]', 1, %s, %s::jsonb)
+            ON CONFLICT(topic_id) DO UPDATE SET dag_json = EXCLUDED.dag_json, updated_at = EXCLUDED.updated_at
+            """,
+            (topic_id, now, dag_str),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO topic_metadata (topic_id, tags_json, user_created, updated_at, dag_json)
+            VALUES (?, '[]', 1, ?, ?)
+            ON CONFLICT(topic_id) DO UPDATE SET dag_json = excluded.dag_json, updated_at = excluded.updated_at
+            """,
+            (topic_id, now, dag_str),
+        )
+    conn.commit()
+
+
+def get_topic_dag(conn, topic_id: str) -> dict | None:
+    """Retrieve a topic DAG from DB. Returns None if not stored."""
+    row = conn.execute(
+        "SELECT dag_json FROM topic_metadata WHERE topic_id = ?", (topic_id,)
+    ).fetchone()
+    if row and row["dag_json"]:
+        val = row["dag_json"]
+        return json.loads(val) if isinstance(val, str) else val
+    return None
+
+
 def delete_concepts_for_topic(conn: sqlite3.Connection, topic_id: str) -> int:
     """Delete all concept rows (topic + concepts) for a topic. Returns rows removed."""
     cur = conn.execute("DELETE FROM concepts WHERE topic = ?", (topic_id,))
@@ -1219,7 +1308,12 @@ def record_study_day(conn, user_id: str) -> None:
 
 
 def get_streak_and_dates(conn, user_id: str, days: int = 84) -> dict:
-    """Return streak count and list of study date strings for the past `days` days."""
+    """Return streak count and list of study date strings for the past `days` days.
+
+    Applies a 1/month missed-day recovery: if yesterday is missing and the user
+    hasn't used their recovery this calendar month, count yesterday as studied
+    and mark the recovery as used.
+    """
     ph = "%s" if conn.db_type == "postgres" else "?"
     rows = conn.execute(
         f"SELECT study_date FROM study_days WHERE user_id = {ph} ORDER BY study_date DESC",
@@ -1227,12 +1321,35 @@ def get_streak_and_dates(conn, user_id: str, days: int = 84) -> dict:
     ).fetchall()
     date_set: set[str] = {r["study_date"] for r in rows}
 
-    # Streak: consecutive days ending today or yesterday
     today = datetime.now(timezone.utc).date()
+    yesterday = today - _dt_timedelta(days=1)
+    recovered = False
+
+    # Apply recovery if: today not studied yet, yesterday missing, recovery available
+    if (
+        today.isoformat() not in date_set
+        and yesterday.isoformat() not in date_set
+        and conn.db_type == "postgres"
+    ):
+        rec_row = conn.execute(
+            "SELECT streak_recovery_used FROM users WHERE id = %s", (user_id,)
+        ).fetchone()
+        current_month = today.strftime("%Y-%m")
+        if rec_row and rec_row["streak_recovery_used"] != current_month:
+            # Grant recovery: add yesterday to the working set (not persisted to study_days)
+            date_set.add(yesterday.isoformat())
+            conn.execute(
+                "UPDATE users SET streak_recovery_used = %s WHERE id = %s",
+                (current_month, user_id),
+            )
+            conn.commit()
+            recovered = True
+
+    # Streak: consecutive days ending today or yesterday
     streak = 0
     cursor = today
     if today.isoformat() not in date_set:
-        cursor = today - _dt_timedelta(days=1)
+        cursor = yesterday
     while cursor.isoformat() in date_set:
         streak += 1
         cursor -= _dt_timedelta(days=1)
@@ -1241,7 +1358,7 @@ def get_streak_and_dates(conn, user_id: str, days: int = 84) -> dict:
     cutoff = (today - _dt_timedelta(days=days - 1)).isoformat()
     recent_dates = sorted(d for d in date_set if d >= cutoff)
 
-    return {"streak": streak, "dates": recent_dates}
+    return {"streak": streak, "dates": recent_dates, "recovered": recovered}
 
 
 # ---------------------------------------------------------------------------
@@ -1324,3 +1441,136 @@ def get_user_style(conn, user_id: str) -> str | None:
     if not row or not row["dominant_gap"]:
         return None
     return _GAP_LABELS.get(row["dominant_gap"])
+
+
+# ── Push Subscriptions ────────────────────────────────────────────────────────
+
+def upsert_push_subscription(conn, user_id: str, endpoint: str, p256dh: str, auth: str) -> None:
+    """Upsert a Web Push subscription for a user."""
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return
+    conn.execute(
+        """
+        INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id, endpoint) DO UPDATE
+          SET p256dh = excluded.p256dh, auth = excluded.auth
+        """,
+        (user_id, endpoint, p256dh, auth),
+    )
+    conn.commit()
+
+
+def delete_push_subscription(conn, user_id: str, endpoint: str) -> None:
+    """Remove a push subscription (e.g. after 410 Gone response from push service)."""
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return
+    conn.execute(
+        "DELETE FROM push_subscriptions WHERE user_id = %s AND endpoint = %s",
+        (user_id, endpoint),
+    )
+    conn.commit()
+
+
+def get_push_subscriptions(conn, user_id: str) -> list[dict]:
+    """Return all active push subscriptions for a user."""
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return []
+    rows = conn.execute(
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = %s",
+        (user_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_push_subscriptions(conn) -> list[dict]:
+    """Return all subscriptions with user_id (used for broadcast/cron nudges)."""
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return []
+    rows = conn.execute(
+        "SELECT user_id, endpoint, p256dh, auth FROM push_subscriptions"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_streak_at_risk_users(conn) -> list[dict]:
+    """Return users who have a streak but haven't studied today (Postgres only).
+    Used by the daily nudge cron job.
+    Returns list of {user_id, streak} dicts.
+    """
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return []
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(timezone.utc).date() - _dt_timedelta(days=1)).isoformat()
+    rows = conn.execute(
+        """
+        SELECT s.user_id,
+               COUNT(*)::int AS days_count
+        FROM study_days s
+        WHERE s.study_date >= (CURRENT_DATE - INTERVAL '60 days')::text
+          AND s.user_id NOT IN (
+            SELECT user_id FROM study_days WHERE study_date = %s
+          )
+          AND EXISTS (
+            SELECT 1 FROM study_days WHERE user_id = s.user_id AND study_date = %s
+          )
+        GROUP BY s.user_id
+        """,
+        (today, yesterday),
+    ).fetchall()
+    result = []
+    for r in rows:
+        streak_data = get_streak_and_dates(conn, r["user_id"], days=1)
+        if streak_data["streak"] > 0:
+            result.append({"user_id": r["user_id"], "streak": streak_data["streak"]})
+    return result
+
+
+def get_decaying_concepts(conn, user_id: str, horizon_days: int = 2) -> list[dict]:
+    """Return mastery rows where next_review_at is within horizon_days, most urgent first.
+    Only works on Postgres (SQLite lacks reliable INTERVAL arithmetic).
+    Returns list of {concept_id, concept_name, topic_id, topic_display_name, days_overdue, last_reviewed_at}.
+    """
+    if getattr(conn, "db_type", "sqlite") != "postgres":
+        return []
+    rows = conn.execute(
+        """
+        SELECT
+            m.concept_id,
+            c.name           AS concept_name,
+            c.topic          AS topic_id,
+            m.next_review_at,
+            m.last_reviewed_at
+        FROM mastery m
+        JOIN concepts c ON c.id = m.concept_id
+        WHERE m.user_id = %s
+          AND m.next_review_at IS NOT NULL
+          AND m.next_review_at <= NOW() + (%s * INTERVAL '1 day')
+        ORDER BY m.next_review_at ASC
+        LIMIT 10
+        """,
+        (user_id, horizon_days),
+    ).fetchall()
+
+    from datetime import timezone as _tz
+    now = datetime.now(_tz.utc)
+    result = []
+    for r in rows:
+        nra = r["next_review_at"]
+        if isinstance(nra, str):
+            from datetime import datetime as _dt
+            try:
+                nra = _dt.fromisoformat(nra.replace("Z", "+00:00"))
+            except ValueError:
+                nra = None
+        days_overdue = 0
+        if nra and nra < now:
+            days_overdue = (now - nra).days
+        result.append({
+            "concept_id": r["concept_id"],
+            "concept_name": r["concept_name"],
+            "topic_id": r["topic_id"],
+            "days_overdue": days_overdue,
+            "last_reviewed_at": r["last_reviewed_at"].isoformat() if r["last_reviewed_at"] else None,
+        })
+    return result
