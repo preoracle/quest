@@ -34,7 +34,8 @@ export function AuthCallbackPage() {
       if (cancelled) return;
 
       if (session) {
-        navigate("/dashboard", { replace: true });
+        const isOnboarded = localStorage.getItem("quest_onboarded");
+        navigate(isOnboarded ? "/dashboard" : "/onboarding", { replace: true });
       } else {
         setError("Sign in failed. Please try again.");
       }
